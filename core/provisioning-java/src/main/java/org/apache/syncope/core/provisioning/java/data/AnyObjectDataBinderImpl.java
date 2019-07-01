@@ -31,8 +31,9 @@ import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.syncope.common.lib.SyncopeClientCompositeException;
 import org.apache.syncope.common.lib.SyncopeClientException;
-import org.apache.syncope.common.lib.patch.AnyObjectPatch;
-import org.apache.syncope.common.lib.patch.AttrPatch;
+import org.apache.syncope.common.lib.request.AnyObjectCR;
+import org.apache.syncope.common.lib.request.AnyObjectUR;
+import org.apache.syncope.common.lib.request.AttrPatch;
 import org.apache.syncope.common.lib.to.AnyObjectTO;
 import org.apache.syncope.common.lib.to.MembershipTO;
 import org.apache.syncope.common.lib.types.AnyTypeKind;
@@ -96,7 +97,7 @@ public class AnyObjectDataBinderImpl extends AbstractAnyDataBinder implements An
 
         if (details) {
             // dynamic realms
-            anyObjectTO.getDynRealms().addAll(userDAO.findDynRealms(anyObject.getKey()));
+            anyObjectTO.getDynRealms().addAll(anyObjectDAO.findDynRealms(anyObject.getKey()));
 
             // relationships
             anyObjectTO.getRelationships().addAll(
@@ -120,22 +121,20 @@ public class AnyObjectDataBinderImpl extends AbstractAnyDataBinder implements An
 
             // dynamic memberships
             anyObjectTO.getDynMemberships().addAll(
-                    anyObjectDAO.findDynGroups(anyObject.getKey()).stream().map(group -> {
-                        return new MembershipTO.Builder().
-                                group(group.getKey(), group.getName()).
-                                build();
-                    }).collect(Collectors.toList()));
+                    anyObjectDAO.findDynGroups(anyObject.getKey()).stream().
+                            map(group -> new MembershipTO.Builder(group.getKey()).groupName(group.getName()).build()).
+                            collect(Collectors.toList()));
         }
 
         return anyObjectTO;
     }
 
     @Override
-    public void create(final AnyObject anyObject, final AnyObjectTO anyObjectTO) {
-        AnyType type = anyTypeDAO.find(anyObjectTO.getType());
+    public void create(final AnyObject anyObject, final AnyObjectCR anyObjectCR) {
+        AnyType type = anyTypeDAO.find(anyObjectCR.getType());
         if (type == null) {
             SyncopeClientException sce = SyncopeClientException.build(ClientExceptionType.InvalidAnyType);
-            sce.getElements().add(anyObjectTO.getType());
+            sce.getElements().add(anyObjectCR.getType());
             throw sce;
         }
         anyObject.setType(type);
@@ -144,19 +143,19 @@ public class AnyObjectDataBinderImpl extends AbstractAnyDataBinder implements An
 
         // name
         SyncopeClientException invalidGroups = SyncopeClientException.build(ClientExceptionType.InvalidGroup);
-        if (anyObjectTO.getName() == null) {
+        if (anyObjectCR.getName() == null) {
             LOG.error("No name specified for this anyObject");
 
             invalidGroups.getElements().add("No name specified for this anyObject");
         } else {
-            anyObject.setName(anyObjectTO.getName());
+            anyObject.setName(anyObjectCR.getName());
         }
 
         // realm
-        Realm realm = realmDAO.findByFullPath(anyObjectTO.getRealm());
+        Realm realm = realmDAO.findByFullPath(anyObjectCR.getRealm());
         if (realm == null) {
             SyncopeClientException noRealm = SyncopeClientException.build(ClientExceptionType.InvalidRealm);
-            noRealm.getElements().add("Invalid or null realm specified: " + anyObjectTO.getRealm());
+            noRealm.getElements().add("Invalid or null realm specified: " + anyObjectCR.getRealm());
             scce.addException(noRealm);
         }
         anyObject.setRealm(realm);
@@ -164,7 +163,7 @@ public class AnyObjectDataBinderImpl extends AbstractAnyDataBinder implements An
         AnyUtils anyUtils = anyUtilsFactory.getInstance(AnyTypeKind.ANY_OBJECT);
         if (anyObject.getRealm() != null) {
             // relationships
-            anyObjectTO.getRelationships().forEach(relationshipTO -> {
+            anyObjectCR.getRelationships().forEach(relationshipTO -> {
                 if (StringUtils.isBlank(relationshipTO.getOtherEndType())
                         || AnyTypeKind.USER.name().equals(relationshipTO.getOtherEndType())
                         || AnyTypeKind.GROUP.name().equals(relationshipTO.getOtherEndType())) {
@@ -202,7 +201,7 @@ public class AnyObjectDataBinderImpl extends AbstractAnyDataBinder implements An
             });
 
             // memberships
-            anyObjectTO.getMemberships().forEach(membershipTO -> {
+            anyObjectCR.getMemberships().forEach(membershipTO -> {
                 Group group = membershipTO.getGroupKey() == null
                         ? groupDAO.findByName(membershipTO.getGroupName())
                         : groupDAO.find(membershipTO.getGroupKey());
@@ -230,7 +229,7 @@ public class AnyObjectDataBinderImpl extends AbstractAnyDataBinder implements An
         }
 
         // attributes and resources
-        fill(anyObject, anyObjectTO, anyUtils, scce);
+        fill(anyObject, anyObjectCR, anyUtils, scce);
 
         // Throw composite exception if there is at least one element set in the composing exceptions
         if (scce.hasExceptions()) {
@@ -239,7 +238,7 @@ public class AnyObjectDataBinderImpl extends AbstractAnyDataBinder implements An
     }
 
     @Override
-    public PropagationByResource update(final AnyObject toBeUpdated, final AnyObjectPatch anyObjectPatch) {
+    public PropagationByResource update(final AnyObject toBeUpdated, final AnyObjectUR anyObjectUR) {
         // Re-merge any pending change from workflow tasks
         AnyObject anyObject = anyObjectDAO.save(toBeUpdated);
 
@@ -255,20 +254,20 @@ public class AnyObjectDataBinderImpl extends AbstractAnyDataBinder implements An
         Map<String, String> oldConnObjectKeys = getConnObjectKeys(anyObject, anyUtils);
 
         // realm
-        setRealm(anyObject, anyObjectPatch);
+        setRealm(anyObject, anyObjectUR);
 
         // name
-        if (anyObjectPatch.getName() != null && StringUtils.isNotBlank(anyObjectPatch.getName().getValue())) {
+        if (anyObjectUR.getName() != null && StringUtils.isNotBlank(anyObjectUR.getName().getValue())) {
             propByRes.addAll(ResourceOperation.UPDATE, anyObjectDAO.findAllResourceKeys(anyObject.getKey()));
 
-            anyObject.setName(anyObjectPatch.getName().getValue());
+            anyObject.setName(anyObjectUR.getName().getValue());
         }
 
         // attributes and resources
-        propByRes.merge(fill(anyObject, anyObjectPatch, anyUtils, scce));
+        propByRes.merge(fill(anyObject, anyObjectUR, anyUtils, scce));
 
         // relationships
-        anyObjectPatch.getRelationships().stream().
+        anyObjectUR.getRelationships().stream().
                 filter(patch -> patch.getRelationshipTO() != null).forEachOrdered((patch) -> {
             RelationshipType relationshipType = relationshipTypeDAO.find(patch.getRelationshipTO().getType());
             if (relationshipType == null) {
@@ -336,7 +335,7 @@ public class AnyObjectDataBinderImpl extends AbstractAnyDataBinder implements An
         SyncopeClientException invalidValues = SyncopeClientException.build(ClientExceptionType.InvalidValues);
 
         // memberships
-        anyObjectPatch.getMemberships().stream().
+        anyObjectUR.getMemberships().stream().
                 filter((membPatch) -> (membPatch.getGroup() != null)).forEachOrdered(membPatch -> {
             anyObject.getMembership(membPatch.getGroup()).ifPresent(membership -> {
                 anyObject.remove(membership);
@@ -344,6 +343,8 @@ public class AnyObjectDataBinderImpl extends AbstractAnyDataBinder implements An
                 anyObject.getPlainAttrs(membership).forEach(attr -> {
                     anyObject.remove(attr);
                     attr.setOwner(null);
+                    attr.setMembership(null);
+                    plainAttrValueDAO.deleteAll(attr, anyUtils);
                 });
 
                 if (membPatch.getOperation() == PatchOperation.DELETE) {
@@ -384,7 +385,7 @@ public class AnyObjectDataBinderImpl extends AbstractAnyDataBinder implements An
                                 newAttr.setSchema(schema);
                                 anyObject.add(newAttr);
 
-                                AttrPatch patch = new AttrPatch.Builder().attrTO(attrTO).build();
+                                AttrPatch patch = new AttrPatch.Builder(attrTO).build();
                                 processAttrPatch(
                                         anyObject, patch, schema, newAttr, anyUtils,
                                         resources, propByRes, invalidValues);

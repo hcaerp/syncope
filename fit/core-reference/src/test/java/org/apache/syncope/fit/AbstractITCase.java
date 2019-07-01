@@ -38,6 +38,7 @@ import javax.naming.directory.BasicAttribute;
 import javax.naming.directory.DirContext;
 import javax.naming.directory.InitialDirContext;
 import javax.naming.directory.ModificationItem;
+import javax.sql.DataSource;
 import javax.ws.rs.core.GenericType;
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.Response;
@@ -47,14 +48,22 @@ import org.apache.cxf.jaxrs.client.WebClient;
 import org.apache.cxf.rs.security.jose.jwa.SignatureAlgorithm;
 import org.apache.syncope.client.lib.SyncopeClient;
 import org.apache.syncope.client.lib.SyncopeClientFactoryBean;
-import org.apache.syncope.common.lib.patch.AnyObjectPatch;
-import org.apache.syncope.common.lib.patch.AttrPatch;
-import org.apache.syncope.common.lib.patch.GroupPatch;
-import org.apache.syncope.common.lib.patch.UserPatch;
+import org.apache.syncope.common.keymaster.client.api.ConfParamOps;
+import org.apache.syncope.common.keymaster.client.api.DomainOps;
+import org.apache.syncope.common.keymaster.client.api.ServiceOps;
+import org.apache.syncope.common.keymaster.client.self.SelfKeymasterClientContext;
+import org.apache.syncope.common.keymaster.client.zookeper.ZookeeperKeymasterClientContext;
+import org.apache.syncope.common.lib.request.AnyObjectUR;
+import org.apache.syncope.common.lib.request.AttrPatch;
+import org.apache.syncope.common.lib.request.GroupUR;
+import org.apache.syncope.common.lib.request.UserUR;
 import org.apache.syncope.common.lib.policy.PolicyTO;
+import org.apache.syncope.common.lib.request.AnyObjectCR;
+import org.apache.syncope.common.lib.request.GroupCR;
+import org.apache.syncope.common.lib.request.UserCR;
 import org.apache.syncope.common.lib.to.SchemaTO;
 import org.apache.syncope.common.lib.to.AnyObjectTO;
-import org.apache.syncope.common.lib.to.AttrTO;
+import org.apache.syncope.common.lib.Attr;
 import org.apache.syncope.common.lib.to.ConnInstanceTO;
 import org.apache.syncope.common.lib.to.ResourceTO;
 import org.apache.syncope.common.lib.to.GroupTO;
@@ -77,10 +86,8 @@ import org.apache.syncope.common.rest.api.service.AnyTypeClassService;
 import org.apache.syncope.common.rest.api.service.AnyTypeService;
 import org.apache.syncope.common.rest.api.service.ApplicationService;
 import org.apache.syncope.common.rest.api.service.CamelRouteService;
-import org.apache.syncope.common.rest.api.service.ConfigurationService;
 import org.apache.syncope.common.rest.api.service.ConnectorHistoryService;
 import org.apache.syncope.common.rest.api.service.ConnectorService;
-import org.apache.syncope.common.rest.api.service.DomainService;
 import org.apache.syncope.common.rest.api.service.DynRealmService;
 import org.apache.syncope.common.rest.api.service.LoggerService;
 import org.apache.syncope.common.rest.api.service.NotificationService;
@@ -116,8 +123,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.apache.syncope.common.rest.api.service.UserRequestService;
 import org.apache.syncope.common.rest.api.service.BpmnProcessService;
+import org.apache.syncope.common.rest.api.service.GatewayRouteService;
 import org.apache.syncope.common.rest.api.service.UserWorkflowTaskService;
+import org.apache.syncope.fit.core.CoreITContext;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 
+@SpringJUnitConfig({ CoreITContext.class, SelfKeymasterClientContext.class, ZookeeperKeymasterClientContext.class })
 public abstract class AbstractITCase {
 
     protected static final Logger LOG = LoggerFactory.getLogger(AbstractITCase.class);
@@ -127,6 +139,8 @@ public abstract class AbstractITCase {
     protected static final String ADMIN_PWD = "password";
 
     protected static final String ADDRESS = "http://localhost:9080/syncope/rest";
+
+    protected static final String BUILD_TOOLS_ADDRESS = "http://localhost:9080/syncope-fit-build-tools/cxf";
 
     protected static final String ENV_KEY_CONTENT_TYPE = "jaxrsContentType";
 
@@ -196,8 +210,6 @@ public abstract class AbstractITCase {
 
     protected static SyncopeService syncopeService;
 
-    protected static DomainService domainService;
-
     protected static ApplicationService applicationService;
 
     protected static AnyTypeClassService anyTypeClassService;
@@ -228,8 +240,6 @@ public abstract class AbstractITCase {
 
     protected static ResourceHistoryService resourceHistoryService;
 
-    protected static ConfigurationService configurationService;
-
     protected static ConnectorService connectorService;
 
     protected static ConnectorHistoryService connectorHistoryService;
@@ -259,6 +269,8 @@ public abstract class AbstractITCase {
     protected static ImplementationService implementationService;
 
     protected static RemediationService remediationService;
+
+    protected static GatewayRouteService gatewayRouteService;
 
     protected static CamelRouteService camelRouteService;
 
@@ -306,7 +318,6 @@ public abstract class AbstractITCase {
         adminClient = clientFactory.create(ADMIN_UNAME, ADMIN_PWD);
 
         syncopeService = adminClient.getService(SyncopeService.class);
-        domainService = adminClient.getService(DomainService.class);
         applicationService = adminClient.getService(ApplicationService.class);
         anyTypeClassService = adminClient.getService(AnyTypeClassService.class);
         anyTypeService = adminClient.getService(AnyTypeService.class);
@@ -322,7 +333,6 @@ public abstract class AbstractITCase {
         groupService = adminClient.getService(GroupService.class);
         resourceService = adminClient.getService(ResourceService.class);
         resourceHistoryService = adminClient.getService(ResourceHistoryService.class);
-        configurationService = adminClient.getService(ConfigurationService.class);
         connectorService = adminClient.getService(ConnectorService.class);
         connectorHistoryService = adminClient.getService(ConnectorHistoryService.class);
         loggerService = adminClient.getService(LoggerService.class);
@@ -338,6 +348,7 @@ public abstract class AbstractITCase {
         securityQuestionService = adminClient.getService(SecurityQuestionService.class);
         implementationService = adminClient.getService(ImplementationService.class);
         remediationService = adminClient.getService(RemediationService.class);
+        gatewayRouteService = adminClient.getService(GatewayRouteService.class);
         camelRouteService = adminClient.getService(CamelRouteService.class);
         saml2SpService = adminClient.getService(SAML2SPService.class);
         saml2IdPService = adminClient.getService(SAML2IdPService.class);
@@ -346,16 +357,28 @@ public abstract class AbstractITCase {
         scimConfService = adminClient.getService(SCIMConfService.class);
     }
 
+    @Autowired
+    protected ConfParamOps confParamOps;
+
+    @Autowired
+    protected ServiceOps serviceOps;
+
+    @Autowired
+    protected DomainOps domainOps;
+
+    @Autowired
+    protected DataSource testDataSource;
+
     protected static String getUUIDString() {
         return UUID.randomUUID().toString().substring(0, 8);
     }
 
-    protected static AttrTO attrTO(final String schema, final String value) {
-        return new AttrTO.Builder().schema(schema).value(value).build();
+    protected static Attr attr(final String schema, final String value) {
+        return new Attr.Builder(schema).value(value).build();
     }
 
     protected static AttrPatch attrAddReplacePatch(final String schema, final String value) {
-        return new AttrPatch.Builder().operation(PatchOperation.ADD_REPLACE).attrTO(attrTO(schema, value)).build();
+        return new AttrPatch.Builder(attr(schema, value)).operation(PatchOperation.ADD_REPLACE).build();
     }
 
     public static <T> T getObject(final URI location, final Class<?> serviceClass, final Class<T> resultClass) {
@@ -435,21 +458,16 @@ public abstract class AbstractITCase {
         assertNotNull(notification);
 
         // 2. create user
-        UserTO userTO = UserITCase.getUniqueSampleTO("notificationtest@syncope.apache.org");
-        userTO.getMemberships().add(
-                new MembershipTO.Builder().group("bf825fe1-7320-4a54-bd64-143b5c18ab97").build());
+        UserCR req = UserITCase.getUniqueSample("notificationtest@syncope.apache.org");
+        req.getMemberships().add(new MembershipTO.Builder("bf825fe1-7320-4a54-bd64-143b5c18ab97").build());
 
-        userTO = createUser(userTO).getEntity();
+        UserTO userTO = createUser(req).getEntity();
         assertNotNull(userTO);
-        return Pair.of(notification.getKey(), userTO.getUsername());
+        return Pair.of(notification.getKey(), req.getUsername());
     }
 
-    protected ProvisioningResult<UserTO> createUser(final UserTO userTO) {
-        return createUser(userTO, true);
-    }
-
-    protected ProvisioningResult<UserTO> createUser(final UserTO userTO, final boolean storePassword) {
-        Response response = userService.create(userTO, storePassword);
+    protected ProvisioningResult<UserTO> createUser(final UserCR req) {
+        Response response = userService.create(req);
         if (response.getStatusInfo().getStatusCode() != Response.Status.CREATED.getStatusCode()) {
             Exception ex = clientFactory.getExceptionMapper().fromResponse(response);
             if (ex != null) {
@@ -460,8 +478,8 @@ public abstract class AbstractITCase {
         });
     }
 
-    protected ProvisioningResult<UserTO> updateUser(final UserPatch userPatch) {
-        return userService.update(userPatch).
+    protected ProvisioningResult<UserTO> updateUser(final UserUR req) {
+        return userService.update(req).
                 readEntity(new GenericType<ProvisioningResult<UserTO>>() {
                 });
     }
@@ -472,8 +490,8 @@ public abstract class AbstractITCase {
                 });
     }
 
-    protected ProvisioningResult<AnyObjectTO> createAnyObject(final AnyObjectTO anyObjectTO) {
-        Response response = anyObjectService.create(anyObjectTO);
+    protected ProvisioningResult<AnyObjectTO> createAnyObject(final AnyObjectCR req) {
+        Response response = anyObjectService.create(req);
         if (response.getStatusInfo().getStatusCode() != Response.Status.CREATED.getStatusCode()) {
             Exception ex = clientFactory.getExceptionMapper().fromResponse(response);
             if (ex != null) {
@@ -484,8 +502,8 @@ public abstract class AbstractITCase {
         });
     }
 
-    protected ProvisioningResult<AnyObjectTO> updateAnyObject(final AnyObjectPatch anyObjectPatch) {
-        return anyObjectService.update(anyObjectPatch).
+    protected ProvisioningResult<AnyObjectTO> updateAnyObject(final AnyObjectUR req) {
+        return anyObjectService.update(req).
                 readEntity(new GenericType<ProvisioningResult<AnyObjectTO>>() {
                 });
     }
@@ -496,8 +514,8 @@ public abstract class AbstractITCase {
                 });
     }
 
-    protected ProvisioningResult<GroupTO> createGroup(final GroupTO groupTO) {
-        Response response = groupService.create(groupTO);
+    protected ProvisioningResult<GroupTO> createGroup(final GroupCR req) {
+        Response response = groupService.create(req);
         if (response.getStatusInfo().getStatusCode() != Response.Status.CREATED.getStatusCode()) {
             Exception ex = clientFactory.getExceptionMapper().fromResponse(response);
             if (ex != null) {
@@ -508,8 +526,8 @@ public abstract class AbstractITCase {
         });
     }
 
-    protected ProvisioningResult<GroupTO> updateGroup(final GroupPatch groupPatch) {
-        return groupService.update(groupPatch).
+    protected ProvisioningResult<GroupTO> updateGroup(final GroupUR req) {
+        return groupService.update(req).
                 readEntity(new GenericType<ProvisioningResult<GroupTO>>() {
                 });
     }

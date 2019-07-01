@@ -18,38 +18,24 @@
  */
 package org.apache.syncope.core.logic.init;
 
+import org.apache.syncope.common.lib.types.EntitlementsHolder;
+import org.apache.syncope.common.lib.types.ImplementationTypesHolder;
 import org.apache.syncope.common.lib.types.OIDCClientEntitlement;
-import org.apache.syncope.core.persistence.api.DomainsHolder;
-import org.apache.syncope.core.persistence.api.SyncopeLoader;
-import org.apache.syncope.core.provisioning.api.EntitlementsHolder;
-import org.apache.syncope.core.spring.security.AuthContextUtils;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.apache.syncope.common.lib.types.OIDCClientImplementationType;
+import org.apache.syncope.core.persistence.api.SyncopeCoreLoader;
 import org.springframework.stereotype.Component;
 
 @Component
-public class OIDCClientLoader implements SyncopeLoader {
-
-    @Autowired
-    private DomainsHolder domainsHolder;
+public class OIDCClientLoader implements SyncopeCoreLoader {
 
     @Override
-    public Integer getPriority() {
+    public int getOrder() {
         return 1000;
     }
 
     @Override
     public void load() {
-        EntitlementsHolder.getInstance().init(OIDCClientEntitlement.values());
-
-        for (String domain : domainsHolder.getDomains().keySet()) {
-            AuthContextUtils.execWithAuthContext(domain, new AuthContextUtils.Executable<Void>() {
-
-                @Override
-                public Void exec() {
-                    return null;
-                }
-            });
-        }
+        EntitlementsHolder.getInstance().addAll(OIDCClientEntitlement.values());
+        ImplementationTypesHolder.getInstance().putAll(OIDCClientImplementationType.values());
     }
-
 }

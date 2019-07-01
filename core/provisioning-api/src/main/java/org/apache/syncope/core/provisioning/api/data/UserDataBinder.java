@@ -18,7 +18,8 @@
  */
 package org.apache.syncope.core.provisioning.api.data;
 
-import org.apache.syncope.common.lib.patch.UserPatch;
+import org.apache.syncope.common.lib.request.UserCR;
+import org.apache.syncope.common.lib.request.UserUR;
 import org.apache.syncope.common.lib.to.UserTO;
 import org.apache.syncope.core.provisioning.api.PropagationByResource;
 import org.apache.syncope.core.persistence.api.entity.user.User;
@@ -33,15 +34,15 @@ public interface UserDataBinder {
 
     UserTO getUserTO(User user, boolean details);
 
-    void create(User user, UserTO userTO, boolean storePassword);
+    void create(User user, UserCR userCR);
 
     /**
-     * Update user, given {@link UserPatch}.
+     * Update user, given {@link UserUR}.
      *
      * @param toBeUpdated user to be updated
-     * @param userPatch bean containing update request
+     * @param userUR bean containing update request
      * @return updated user + propagation by resource
      * @see PropagationByResource
      */
-    PropagationByResource update(User toBeUpdated, UserPatch userPatch);
+    PropagationByResource update(User toBeUpdated, UserUR userUR);
 }

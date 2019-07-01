@@ -30,15 +30,18 @@ import javax.ws.rs.core.Response;
 import org.apache.syncope.client.lib.SyncopeClient;
 import org.apache.syncope.common.lib.SyncopeClientException;
 import org.apache.syncope.common.lib.SyncopeConstants;
-import org.apache.syncope.common.lib.patch.AnyObjectPatch;
+import org.apache.syncope.common.lib.request.AnyObjectCR;
+import org.apache.syncope.common.lib.request.AnyObjectUR;
 import org.apache.syncope.common.lib.to.ConnObjectTO;
 import org.apache.syncope.common.lib.to.AnyObjectTO;
-import org.apache.syncope.common.lib.to.AttrTO;
+import org.apache.syncope.common.lib.Attr;
+import org.apache.syncope.common.lib.request.StringPatchItem;
 import org.apache.syncope.common.lib.to.MembershipTO;
 import org.apache.syncope.common.lib.to.PagedResult;
 import org.apache.syncope.common.lib.to.RelationshipTO;
 import org.apache.syncope.common.lib.types.AnyTypeKind;
 import org.apache.syncope.common.lib.types.ClientExceptionType;
+import org.apache.syncope.common.lib.types.PatchOperation;
 import org.apache.syncope.common.lib.types.SchemaType;
 import org.apache.syncope.common.rest.api.beans.AnyQuery;
 import org.apache.syncope.fit.AbstractITCase;
@@ -46,22 +49,18 @@ import org.junit.jupiter.api.Test;
 
 public class AnyObjectITCase extends AbstractITCase {
 
-    public static AnyObjectTO getSampleTO(final String location) {
-        AnyObjectTO anyObjectTO = new AnyObjectTO();
-        anyObjectTO.setName(location + getUUIDString());
-        anyObjectTO.setRealm(SyncopeConstants.ROOT_REALM);
-        anyObjectTO.setType("PRINTER");
-        anyObjectTO.getPlainAttrs().add(attrTO("location", location + getUUIDString()));
-
-        anyObjectTO.getResources().add(RESOURCE_NAME_DBSCRIPTED);
-        return anyObjectTO;
+    public static AnyObjectCR getSample(final String location) {
+        return new AnyObjectCR.Builder(SyncopeConstants.ROOT_REALM, "PRINTER", location + getUUIDString()).
+                plainAttr(attr("location", location + getUUIDString())).
+                resource(RESOURCE_NAME_DBSCRIPTED).
+                build();
     }
 
     @Test
     public void create() {
-        AnyObjectTO anyObjectTO = getSampleTO("create");
+        AnyObjectCR anyObjectCR = getSample("create");
 
-        anyObjectTO = createAnyObject(anyObjectTO).getEntity();
+        AnyObjectTO anyObjectTO = createAnyObject(anyObjectCR).getEntity();
         assertNotNull(anyObjectTO);
 
         ConnObjectTO connObjectTO =
@@ -76,22 +75,21 @@ public class AnyObjectITCase extends AbstractITCase {
     @Test
     public void createInvalidMembership() {
         // 1. create anyObject in realm /odd and attempt to assign group 15, from realm /even => exception
-        AnyObjectTO anyObjectTO = getSampleTO("createInvalidMembership");
-        anyObjectTO.setRealm("/odd");
-        anyObjectTO.getMemberships().add(
-                new MembershipTO.Builder().group("034740a9-fa10-453b-af37-dc7897e98fb1").build());
+        AnyObjectCR anyObjectCR = getSample("createInvalidMembership");
+        anyObjectCR.setRealm("/odd");
+        anyObjectCR.getMemberships().add(new MembershipTO.Builder("034740a9-fa10-453b-af37-dc7897e98fb1").build());
 
         try {
-            createAnyObject(anyObjectTO);
+            createAnyObject(anyObjectCR);
             fail("This should not happen");
         } catch (SyncopeClientException e) {
             assertEquals(ClientExceptionType.InvalidMembership, e.getType());
         }
 
         // 2. change anyObject's realm to /even/two, now it works
-        anyObjectTO.setRealm("/even/two");
+        anyObjectCR.setRealm("/even/two");
 
-        anyObjectTO = createAnyObject(anyObjectTO).getEntity();
+        AnyObjectTO anyObjectTO = createAnyObject(anyObjectCR).getEntity();
         assertNotNull(anyObjectTO.getMembership("034740a9-fa10-453b-af37-dc7897e98fb1"));
     }
 
@@ -103,10 +101,10 @@ public class AnyObjectITCase extends AbstractITCase {
             assertEquals(Response.Status.NOT_FOUND, e.getType().getResponseStatus());
         }
 
-        AnyObjectTO anyObjectTO = getSampleTO("deletable");
-        anyObjectTO.setRealm("/even");
+        AnyObjectCR anyObjectCR = getSample("deletable");
+        anyObjectCR.setRealm("/even");
 
-        anyObjectTO = createAnyObject(anyObjectTO).getEntity();
+        AnyObjectTO anyObjectTO = createAnyObject(anyObjectCR).getEntity();
         assertNotNull(anyObjectTO);
 
         AnyObjectTO deletedAnyObject = deleteAnyObject(anyObjectTO.getKey()).getEntity();
@@ -140,51 +138,51 @@ public class AnyObjectITCase extends AbstractITCase {
 
     @Test
     public void update() {
-        AnyObjectTO anyObjectTO = getSampleTO("update");
-        anyObjectTO = createAnyObject(anyObjectTO).getEntity();
+        AnyObjectCR anyObjectCR = getSample("update");
+        AnyObjectTO anyObjectTO = createAnyObject(anyObjectCR).getEntity();
 
         assertEquals(1, anyObjectTO.getPlainAttrs().size());
 
-        AnyObjectPatch anyObjectPatch = new AnyObjectPatch();
-        anyObjectPatch.setKey(anyObjectTO.getKey());
+        AnyObjectUR anyObjectUR = new AnyObjectUR();
+        anyObjectUR.setKey(anyObjectTO.getKey());
         String newLocation = "new" + getUUIDString();
-        anyObjectPatch.getPlainAttrs().add(attrAddReplacePatch("location", newLocation));
+        anyObjectUR.getPlainAttrs().add(attrAddReplacePatch("location", newLocation));
 
-        anyObjectTO = updateAnyObject(anyObjectPatch).getEntity();
+        anyObjectTO = updateAnyObject(anyObjectUR).getEntity();
 
         assertEquals(newLocation, anyObjectTO.getPlainAttr("location").get().getValues().get(0));
     }
 
     @Test
     public void readAttrs() {
-        AnyObjectTO anyObjectTO = getSampleTO("readAttrs");
-        anyObjectTO = createAnyObject(anyObjectTO).getEntity();
+        AnyObjectCR anyObjectCR = getSample("readAttrs");
+        AnyObjectTO anyObjectTO = createAnyObject(anyObjectCR).getEntity();
         assertNotNull(anyObjectTO);
 
-        Set<AttrTO> attrs = anyObjectService.read(anyObjectTO.getKey(), SchemaType.PLAIN);
+        Set<Attr> attrs = anyObjectService.read(anyObjectTO.getKey(), SchemaType.PLAIN);
         assertEquals(anyObjectTO.getPlainAttrs(), attrs);
 
-        AttrTO location = anyObjectService.read(anyObjectTO.getKey(), SchemaType.PLAIN, "location");
+        Attr location = anyObjectService.read(anyObjectTO.getKey(), SchemaType.PLAIN, "location");
         assertEquals(anyObjectTO.getPlainAttr("location").get(), location);
     }
 
     @Test
     public void updateAttr() {
-        AnyObjectTO anyObjectTO = getSampleTO("updateAttr");
-        anyObjectTO = createAnyObject(anyObjectTO).getEntity();
+        AnyObjectCR anyObjectCR = getSample("updateAttr");
+        AnyObjectTO anyObjectTO = createAnyObject(anyObjectCR).getEntity();
         assertNotNull(anyObjectTO);
 
-        AttrTO updated = attrTO("location", "newlocation");
+        Attr updated = attr("location", "newlocation");
         anyObjectService.update(anyObjectTO.getKey(), SchemaType.PLAIN, updated);
 
-        AttrTO location = anyObjectService.read(anyObjectTO.getKey(), SchemaType.PLAIN, "location");
+        Attr location = anyObjectService.read(anyObjectTO.getKey(), SchemaType.PLAIN, "location");
         assertEquals(updated, location);
     }
 
     @Test
     public void deleteAttr() {
-        AnyObjectTO anyObjectTO = getSampleTO("deleteAttr");
-        anyObjectTO = createAnyObject(anyObjectTO).getEntity();
+        AnyObjectCR anyObjectCR = getSample("deleteAttr");
+        AnyObjectTO anyObjectTO = createAnyObject(anyObjectCR).getEntity();
         assertNotNull(anyObjectTO);
         assertNotNull(anyObjectTO.getPlainAttr("location"));
 
@@ -200,15 +198,46 @@ public class AnyObjectITCase extends AbstractITCase {
 
     @Test
     public void issueSYNCOPE756() {
-        AnyObjectTO anyObjectTO = getSampleTO("issueSYNCOPE756");
-        anyObjectTO.getRelationships().add(new RelationshipTO.Builder().otherEnd(
+        AnyObjectCR anyObjectCR = getSample("issueSYNCOPE756");
+        anyObjectCR.getRelationships().add(new RelationshipTO.Builder().otherEnd(
                 AnyTypeKind.USER.name(), "1417acbe-cbf6-4277-9372-e75e04f97000").build());
 
         try {
-            createAnyObject(anyObjectTO).getEntity();
+            createAnyObject(anyObjectCR).getEntity();
             fail("This should not happen");
         } catch (SyncopeClientException e) {
             assertEquals(ClientExceptionType.InvalidAnyType, e.getType());
         }
+    }
+
+    @Test
+    public void issueSYNCOPE1472() {
+        // 1. assign resource-db-scripted again to Canon MF 8030cn and update twice
+        AnyObjectUR anyObjectPatch = new AnyObjectUR();
+        anyObjectPatch.setKey("8559d14d-58c2-46eb-a2d4-a7d35161e8f8");
+        anyObjectPatch.getResources().add(new StringPatchItem.Builder().value(RESOURCE_NAME_DBSCRIPTED).build());
+        anyObjectPatch.getAuxClasses().add(new StringPatchItem.Builder().value("csv").build());
+
+        for (int i = 0; i < 2; i++) {
+            updateAnyObject(anyObjectPatch);
+        }
+
+        // 2. remove resources and auxiliary classes
+        anyObjectPatch.getResources().clear();
+        anyObjectPatch.getResources().add(new StringPatchItem.Builder()
+                .value(RESOURCE_NAME_DBSCRIPTED)
+                .operation(PatchOperation.DELETE)
+                .build());
+        anyObjectPatch.getAuxClasses().clear();
+        anyObjectPatch.getAuxClasses().add(new StringPatchItem.Builder()
+                .value("csv")
+                .operation(PatchOperation.DELETE)
+                .build());
+
+        updateAnyObject(anyObjectPatch);
+
+        AnyObjectTO printer = anyObjectService.read("8559d14d-58c2-46eb-a2d4-a7d35161e8f8");
+        assertFalse(printer.getResources().contains(RESOURCE_NAME_DBSCRIPTED), "Should not contain removed resources");
+        assertFalse(printer.getAuxClasses().contains("csv"), "Should not contain removed auxiliary classes");
     }
 }

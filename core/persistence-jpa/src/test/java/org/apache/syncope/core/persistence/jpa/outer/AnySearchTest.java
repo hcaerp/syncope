@@ -21,20 +21,25 @@ package org.apache.syncope.core.persistence.jpa.outer;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
+import java.util.ArrayList;
 import java.util.List;
+import org.apache.syncope.common.lib.SyncopeClientException;
 import org.apache.syncope.common.lib.types.AnyTypeKind;
-import org.apache.syncope.common.lib.types.StandardEntitlement;
+import org.apache.syncope.common.lib.types.ClientExceptionType;
+import org.apache.syncope.common.lib.types.IdRepoEntitlement;
 import org.apache.syncope.core.persistence.api.dao.GroupDAO;
 import org.apache.syncope.core.persistence.api.dao.RealmDAO;
 import org.apache.syncope.core.persistence.api.dao.RoleDAO;
 import org.apache.syncope.core.persistence.api.dao.AnySearchDAO;
+import org.apache.syncope.core.persistence.api.dao.search.AnyCond;
 import org.apache.syncope.core.persistence.api.dao.search.AttributeCond;
+import org.apache.syncope.core.persistence.api.dao.search.OrderByClause;
 import org.apache.syncope.core.persistence.api.dao.search.RoleCond;
 import org.apache.syncope.core.persistence.api.dao.search.SearchCond;
 import org.apache.syncope.core.persistence.api.entity.user.DynRoleMembership;
 import org.apache.syncope.core.persistence.api.entity.Role;
-import org.apache.syncope.core.persistence.api.entity.group.Group;
 import org.apache.syncope.core.persistence.api.entity.user.User;
 import org.apache.syncope.core.persistence.jpa.AbstractTest;
 import org.junit.jupiter.api.Test;
@@ -57,11 +62,42 @@ public class AnySearchTest extends AbstractTest {
     private RoleDAO roleDAO;
 
     @Test
+    public void searchByDynMembership() {
+        // 1. create role with dynamic membership
+        Role role = entityFactory.newEntity(Role.class);
+        role.setKey("new");
+        role.add(realmDAO.getRoot());
+        role.add(realmDAO.findByFullPath("/even/two"));
+        role.getEntitlements().add(IdRepoEntitlement.LOG_LIST);
+        role.getEntitlements().add(IdRepoEntitlement.LOG_SET_LEVEL);
+
+        DynRoleMembership dynMembership = entityFactory.newEntity(DynRoleMembership.class);
+        dynMembership.setFIQLCond("cool==true");
+        dynMembership.setRole(role);
+
+        role.setDynMembership(dynMembership);
+
+        role = roleDAO.saveAndRefreshDynMemberships(role);
+        assertNotNull(role);
+
+        entityManager().flush();
+
+        // 2. search user by this dynamic role
+        RoleCond roleCond = new RoleCond();
+        roleCond.setRole(role.getKey());
+
+        List<User> users = searchDAO.search(SearchCond.getLeafCond(roleCond), AnyTypeKind.USER);
+        assertNotNull(users);
+        assertEquals(1, users.size());
+        assertEquals("c9b2dec2-00a7-4855-97c0-d854842b4b24", users.get(0).getKey());
+    }
+
+    @Test
     public void issueSYNCOPE95() {
-        for (Group group : groupDAO.findAll(1, 100)) {
+        groupDAO.findAll(1, 100).forEach(group -> {
             groupDAO.delete(group.getKey());
-        }
-        groupDAO.flush();
+        });
+        entityManager().flush();
 
         AttributeCond coolLeafCond = new AttributeCond(AttributeCond.Type.EQ);
         coolLeafCond.setSchema("cool");
@@ -78,33 +114,31 @@ public class AnySearchTest extends AbstractTest {
     }
 
     @Test
-    public void searchByDynMembership() {
-        // 1. create role with dynamic membership
-        Role role = entityFactory.newEntity(Role.class);
-        role.setKey("new");
-        role.add(realmDAO.getRoot());
-        role.add(realmDAO.findByFullPath("/even/two"));
-        role.getEntitlements().add(StandardEntitlement.LOG_LIST);
-        role.getEntitlements().add(StandardEntitlement.LOG_SET_LEVEL);
+    public void issueSYNCOPE1417() {
+        AnyCond usernameLeafCond = new AnyCond(AnyCond.Type.EQ);
+        usernameLeafCond.setSchema("username");
+        usernameLeafCond.setExpression("rossini");
+        AttributeCond idRightCond = new AttributeCond(AttributeCond.Type.LIKE);
+        idRightCond.setSchema("fullname");
+        idRightCond.setExpression("Giuseppe V%");
+        SearchCond searchCondition = SearchCond.getOrCond(
+                SearchCond.getLeafCond(usernameLeafCond), SearchCond.getLeafCond(idRightCond));
 
-        DynRoleMembership dynMembership = entityFactory.newEntity(DynRoleMembership.class);
-        dynMembership.setFIQLCond("cool==true");
-        dynMembership.setRole(role);
+        List<OrderByClause> orderByClauses = new ArrayList<>();
+        OrderByClause orderByClause = new OrderByClause();
+        orderByClause.setField("surname");
+        orderByClause.setDirection(OrderByClause.Direction.DESC);
+        orderByClauses.add(orderByClause);
+        orderByClause = new OrderByClause();
+        orderByClause.setField("firstname");
+        orderByClause.setDirection(OrderByClause.Direction.ASC);
+        orderByClauses.add(orderByClause);
 
-        role.setDynMembership(dynMembership);
-
-        role = roleDAO.saveAndRefreshDynMemberships(role);
-        assertNotNull(role);
-
-        roleDAO.flush();
-
-        // 2. search user by this dynamic role
-        RoleCond roleCond = new RoleCond();
-        roleCond.setRole(role.getKey());
-
-        List<User> users = searchDAO.search(SearchCond.getLeafCond(roleCond), AnyTypeKind.USER);
-        assertNotNull(users);
-        assertEquals(1, users.size());
-        assertEquals("c9b2dec2-00a7-4855-97c0-d854842b4b24", users.get(0).getKey());
+        try {
+            searchDAO.search(searchCondition, orderByClauses, AnyTypeKind.USER);
+            fail();
+        } catch (SyncopeClientException e) {
+            assertEquals(ClientExceptionType.InvalidSearchExpression, e.getType());
+        }
     }
 }

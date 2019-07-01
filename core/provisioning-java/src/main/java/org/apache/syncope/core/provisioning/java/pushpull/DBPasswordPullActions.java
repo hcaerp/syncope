@@ -19,9 +19,11 @@
 package org.apache.syncope.core.provisioning.java.pushpull;
 
 import java.util.Optional;
-import org.apache.syncope.common.lib.patch.AnyPatch;
-import org.apache.syncope.common.lib.patch.PasswordPatch;
-import org.apache.syncope.common.lib.patch.UserPatch;
+import org.apache.syncope.common.lib.request.AnyCR;
+import org.apache.syncope.common.lib.request.AnyUR;
+import org.apache.syncope.common.lib.request.PasswordPatch;
+import org.apache.syncope.common.lib.request.UserCR;
+import org.apache.syncope.common.lib.request.UserUR;
 import org.apache.syncope.common.lib.to.EntityTO;
 import org.apache.syncope.common.lib.to.UserTO;
 import org.apache.syncope.common.lib.types.CipherAlgorithm;
@@ -63,24 +65,24 @@ public class DBPasswordPullActions implements PullActions {
     public void beforeProvision(
             final ProvisioningProfile<?, ?> profile,
             final SyncDelta delta,
-            final EntityTO any) throws JobExecutionException {
+            final AnyCR anyCR) throws JobExecutionException {
 
-        if (any instanceof UserTO) {
-            String password = ((UserTO) any).getPassword();
+        if (anyCR instanceof UserCR) {
+            String password = ((UserCR) anyCR).getPassword();
             parseEncodedPassword(password, profile.getConnector());
         }
     }
 
     @Transactional(readOnly = true)
     @Override
-    public <M extends AnyPatch> void beforeUpdate(
+    public void beforeUpdate(
             final ProvisioningProfile<?, ?> profile,
             final SyncDelta delta,
             final EntityTO entityTO,
-            final M anyPatch) throws JobExecutionException {
+            final AnyUR anyUR) throws JobExecutionException {
 
-        if (anyPatch instanceof UserPatch) {
-            PasswordPatch modPassword = ((UserPatch) anyPatch).getPassword();
+        if (anyUR instanceof UserUR) {
+            PasswordPatch modPassword = ((UserUR) anyUR).getPassword();
             parseEncodedPassword(modPassword == null ? null : modPassword.getValue(), profile.getConnector());
         }
     }

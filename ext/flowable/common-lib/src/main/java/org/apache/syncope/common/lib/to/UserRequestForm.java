@@ -20,7 +20,6 @@ package org.apache.syncope.common.lib.to;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -29,11 +28,12 @@ import javax.xml.bind.annotation.XmlElement;
 import javax.xml.bind.annotation.XmlElementWrapper;
 import javax.xml.bind.annotation.XmlRootElement;
 import javax.xml.bind.annotation.XmlType;
-import org.apache.syncope.common.lib.patch.UserPatch;
+import org.apache.syncope.common.lib.BaseBean;
+import org.apache.syncope.common.lib.request.UserUR;
 
 @XmlRootElement(name = "userRequestForm")
 @XmlType
-public class UserRequestForm implements Serializable {
+public class UserRequestForm extends BaseBean {
 
     private static final long serialVersionUID = -7044543391316529128L;
 
@@ -51,11 +51,11 @@ public class UserRequestForm implements Serializable {
 
     private Date dueDate;
 
-    private String owner;
+    private String assignee;
 
     private UserTO userTO;
 
-    private UserPatch userPatch;
+    private UserUR userUR;
 
     private final List<UserRequestFormProperty> properties = new ArrayList<>();
 
@@ -129,12 +129,12 @@ public class UserRequestForm implements Serializable {
         }
     }
 
-    public String getOwner() {
-        return owner;
+    public String getAssignee() {
+        return assignee;
     }
 
-    public void setOwner(final String owner) {
-        this.owner = owner;
+    public void setAssignee(final String assignee) {
+        this.assignee = assignee;
     }
 
     public UserTO getUserTO() {
@@ -145,12 +145,12 @@ public class UserRequestForm implements Serializable {
         this.userTO = userTO;
     }
 
-    public UserPatch getUserPatch() {
-        return userPatch;
+    public UserUR getUserUR() {
+        return userUR;
     }
 
-    public void setUserPatch(final UserPatch userPatch) {
-        this.userPatch = userPatch;
+    public void setUserUR(final UserUR userUR) {
+        this.userUR = userUR;
     }
 
     @JsonIgnore

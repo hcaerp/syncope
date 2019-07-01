@@ -24,10 +24,9 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.tuple.Pair;
-import org.apache.syncope.common.lib.patch.AnyObjectPatch;
+import org.apache.syncope.common.lib.request.AnyObjectCR;
+import org.apache.syncope.common.lib.request.AnyObjectUR;
 import org.apache.syncope.common.lib.to.PropagationStatus;
-import org.apache.syncope.common.lib.to.AnyObjectTO;
-import org.apache.syncope.common.lib.to.PropagationTaskTO;
 import org.apache.syncope.common.lib.types.AnyTypeKind;
 import org.apache.syncope.core.provisioning.api.PropagationByResource;
 import org.apache.syncope.common.lib.types.ResourceOperation;
@@ -39,6 +38,7 @@ import org.apache.syncope.core.provisioning.api.propagation.PropagationReporter;
 import org.apache.syncope.core.provisioning.api.propagation.PropagationTaskExecutor;
 import org.apache.syncope.core.provisioning.api.VirAttrHandler;
 import org.apache.syncope.core.provisioning.api.propagation.PropagationException;
+import org.apache.syncope.core.provisioning.api.propagation.PropagationTaskInfo;
 import org.apache.syncope.core.workflow.api.AnyObjectWorkflowAdapter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Propagation;
@@ -63,53 +63,53 @@ public class DefaultAnyObjectProvisioningManager implements AnyObjectProvisionin
 
     @Override
     public Pair<String, List<PropagationStatus>> create(
-            final AnyObjectTO anyObjectTO, final boolean nullPriorityAsync) {
+            final AnyObjectCR anyObjectCR, final boolean nullPriorityAsync) {
 
-        return create(anyObjectTO, Collections.<String>emptySet(), nullPriorityAsync);
+        return create(anyObjectCR, Collections.<String>emptySet(), nullPriorityAsync);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     @Override
     public Pair<String, List<PropagationStatus>> create(
-            final AnyObjectTO anyObjectTO, final Set<String> excludedResources, final boolean nullPriorityAsync) {
+            final AnyObjectCR anyObjectCR, final Set<String> excludedResources, final boolean nullPriorityAsync) {
 
-        WorkflowResult<String> created = awfAdapter.create(anyObjectTO);
+        WorkflowResult<String> created = awfAdapter.create(anyObjectCR);
 
-        List<PropagationTaskTO> tasks = propagationManager.getCreateTasks(
+        List<PropagationTaskInfo> taskInfos = propagationManager.getCreateTasks(
                 AnyTypeKind.ANY_OBJECT,
                 created.getResult(),
                 null,
                 created.getPropByRes(),
-                anyObjectTO.getVirAttrs(),
+                anyObjectCR.getVirAttrs(),
                 excludedResources);
-        PropagationReporter propagationReporter = taskExecutor.execute(tasks, nullPriorityAsync);
+        PropagationReporter propagationReporter = taskExecutor.execute(taskInfos, nullPriorityAsync);
 
         return Pair.of(created.getResult(), propagationReporter.getStatuses());
     }
 
     @Override
-    public Pair<AnyObjectPatch, List<PropagationStatus>> update(
-            final AnyObjectPatch anyObjectPatch, final boolean nullPriorityAsync) {
+    public Pair<AnyObjectUR, List<PropagationStatus>> update(
+            final AnyObjectUR anyObjectUR, final boolean nullPriorityAsync) {
 
-        return update(anyObjectPatch, Collections.<String>emptySet(), nullPriorityAsync);
+        return update(anyObjectUR, Collections.<String>emptySet(), nullPriorityAsync);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     @Override
-    public Pair<AnyObjectPatch, List<PropagationStatus>> update(
-            final AnyObjectPatch anyObjectPatch, final Set<String> excludedResources, final boolean nullPriorityAsync) {
+    public Pair<AnyObjectUR, List<PropagationStatus>> update(
+            final AnyObjectUR anyObjectUR, final Set<String> excludedResources, final boolean nullPriorityAsync) {
 
-        WorkflowResult<AnyObjectPatch> updated = awfAdapter.update(anyObjectPatch);
+        WorkflowResult<AnyObjectUR> updated = awfAdapter.update(anyObjectUR);
 
-        List<PropagationTaskTO> tasks = propagationManager.getUpdateTasks(
+        List<PropagationTaskInfo> taskInfos = propagationManager.getUpdateTasks(
                 AnyTypeKind.ANY_OBJECT,
                 updated.getResult().getKey(),
                 false,
                 null,
                 updated.getPropByRes(),
-                anyObjectPatch.getVirAttrs(),
+                anyObjectUR.getVirAttrs(),
                 excludedResources);
-        PropagationReporter propagationReporter = taskExecutor.execute(tasks, nullPriorityAsync);
+        PropagationReporter propagationReporter = taskExecutor.execute(taskInfos, nullPriorityAsync);
 
         return Pair.of(updated.getResult(), propagationReporter.getStatuses());
     }
@@ -132,12 +132,12 @@ public class DefaultAnyObjectProvisioningManager implements AnyObjectProvisionin
         // information could only be available after awfAdapter.delete(), which
         // will also effectively remove user from db, thus making virtually
         // impossible by NotificationManager to fetch required user information
-        List<PropagationTaskTO> tasks = propagationManager.getDeleteTasks(
+        List<PropagationTaskInfo> taskInfos = propagationManager.getDeleteTasks(
                 AnyTypeKind.ANY_OBJECT,
                 key,
                 propByRes,
                 excludedResources);
-        PropagationReporter propagationReporter = taskExecutor.execute(tasks, nullPriorityAsync);
+        PropagationReporter propagationReporter = taskExecutor.execute(taskInfos, nullPriorityAsync);
 
         try {
             awfAdapter.delete(key);
@@ -149,13 +149,13 @@ public class DefaultAnyObjectProvisioningManager implements AnyObjectProvisionin
     }
 
     @Override
-    public String unlink(final AnyObjectPatch anyObjectPatch) {
-        return awfAdapter.update(anyObjectPatch).getResult().getKey();
+    public String unlink(final AnyObjectUR anyObjectUR) {
+        return awfAdapter.update(anyObjectUR).getResult().getKey();
     }
 
     @Override
-    public String link(final AnyObjectPatch anyObjectPatch) {
-        return awfAdapter.update(anyObjectPatch).getResult().getKey();
+    public String link(final AnyObjectUR anyObjectUR) {
+        return awfAdapter.update(anyObjectUR).getResult().getKey();
     }
 
     @Override
@@ -165,7 +165,7 @@ public class DefaultAnyObjectProvisioningManager implements AnyObjectProvisionin
         PropagationByResource propByRes = new PropagationByResource();
         propByRes.addAll(ResourceOperation.UPDATE, resources);
 
-        List<PropagationTaskTO> tasks = propagationManager.getUpdateTasks(
+        List<PropagationTaskInfo> taskInfos = propagationManager.getUpdateTasks(
                 AnyTypeKind.ANY_OBJECT,
                 key,
                 false,
@@ -173,7 +173,7 @@ public class DefaultAnyObjectProvisioningManager implements AnyObjectProvisionin
                 propByRes,
                 null,
                 null);
-        PropagationReporter propagationReporter = taskExecutor.execute(tasks, nullPriorityAsync);
+        PropagationReporter propagationReporter = taskExecutor.execute(taskInfos, nullPriorityAsync);
 
         return propagationReporter.getStatuses();
     }
@@ -185,14 +185,14 @@ public class DefaultAnyObjectProvisioningManager implements AnyObjectProvisionin
         PropagationByResource propByRes = new PropagationByResource();
         propByRes.addAll(ResourceOperation.DELETE, resources);
 
-        List<PropagationTaskTO> tasks = propagationManager.getDeleteTasks(
+        List<PropagationTaskInfo> taskInfos = propagationManager.getDeleteTasks(
                 AnyTypeKind.ANY_OBJECT,
                 key,
                 propByRes,
                 anyObjectDAO.findAllResourceKeys(key).stream().
                         filter(resource -> !resources.contains(resource)).
                         collect(Collectors.toList()));
-        PropagationReporter propagationReporter = taskExecutor.execute(tasks, nullPriorityAsync);
+        PropagationReporter propagationReporter = taskExecutor.execute(taskInfos, nullPriorityAsync);
 
         return propagationReporter.getStatuses();
     }

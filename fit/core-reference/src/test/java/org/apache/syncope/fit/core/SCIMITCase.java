@@ -63,14 +63,14 @@ import org.apache.syncope.ext.scimv2.api.data.ServiceProviderConfig;
 import org.apache.syncope.ext.scimv2.api.data.Value;
 import org.apache.syncope.ext.scimv2.api.type.ErrorType;
 import org.apache.syncope.ext.scimv2.api.type.Resource;
-import org.apache.syncope.ext.scimv2.cxf.JacksonSCIMJsonProvider;
+import org.apache.syncope.ext.scimv2.cxf.SCIMJacksonJsonProvider;
 import org.apache.syncope.fit.AbstractITCase;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 public class SCIMITCase extends AbstractITCase {
 
-    public static final String SCIM_ADDRESS = "http://localhost:9080/syncope/scim/v2";
+    public static final String SCIM_ADDRESS = "http://localhost:9080/syncope/rest/scim/v2";
 
     private static final SCIMConf CONF;
 
@@ -123,7 +123,7 @@ public class SCIMITCase extends AbstractITCase {
     }
 
     private WebClient webClient() {
-        return WebClient.create(SCIM_ADDRESS, Arrays.asList(new JacksonSCIMJsonProvider())).
+        return WebClient.create(SCIM_ADDRESS, Arrays.asList(new SCIMJacksonJsonProvider())).
                 accept(SCIMConstants.APPLICATION_SCIM_JSON_TYPE).
                 type(SCIMConstants.APPLICATION_SCIM_JSON_TYPE).
                 header(HttpHeaders.AUTHORIZATION, "Bearer " + adminClient.getJWT());
@@ -321,7 +321,7 @@ public class SCIMITCase extends AbstractITCase {
         assertEquals("additional", additional.getDisplayName());
 
         // gt
-        UserTO newUser = userService.create(UserITCase.getUniqueSampleTO("scimsearch@syncope.apache.org"), true).
+        UserTO newUser = userService.create(UserITCase.getUniqueSample("scimsearch@syncope.apache.org")).
                 readEntity(new GenericType<ProvisioningResult<UserTO>>() {
                 }).getEntity();
 

@@ -27,8 +27,8 @@ import java.util.Iterator;
 import java.util.List;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.syncope.client.console.SyncopeConsoleSession;
-import org.apache.syncope.client.console.commons.Constants;
-import org.apache.syncope.client.console.commons.DirectoryDataProvider;
+import org.apache.syncope.client.ui.commons.Constants;
+import org.apache.syncope.client.ui.commons.DirectoryDataProvider;
 import org.apache.syncope.client.console.rest.UserRequestRestClient;
 import org.apache.syncope.client.console.panels.UserRequestFormDirectoryPanel.UserRequestFormProvider;
 import org.apache.syncope.client.console.layout.FormLayoutInfoUtils;
@@ -40,13 +40,13 @@ import org.apache.syncope.client.console.wicket.markup.html.bootstrap.dialog.Bas
 import org.apache.syncope.client.console.wicket.markup.html.form.ActionLink;
 import org.apache.syncope.client.console.wicket.markup.html.form.ActionsPanel;
 import org.apache.syncope.client.console.widgets.UserRequestFormsWidget;
-import org.apache.syncope.client.console.wizards.AjaxWizard;
-import org.apache.syncope.client.console.wizards.any.AnyWrapper;
 import org.apache.syncope.client.console.wizards.any.UserWizardBuilder;
+import org.apache.syncope.client.ui.commons.wizards.AjaxWizard;
+import org.apache.syncope.client.ui.commons.wizards.any.AnyWrapper;
 import org.apache.syncope.common.lib.AnyOperations;
 import org.apache.syncope.common.lib.SyncopeClientException;
-import org.apache.syncope.common.lib.patch.PasswordPatch;
-import org.apache.syncope.common.lib.patch.UserPatch;
+import org.apache.syncope.common.lib.request.PasswordPatch;
+import org.apache.syncope.common.lib.request.UserUR;
 import org.apache.syncope.common.lib.to.ProvisioningResult;
 import org.apache.syncope.common.lib.to.UserTO;
 import org.apache.syncope.common.lib.to.UserRequestForm;
@@ -132,7 +132,7 @@ public class UserRequestFormDirectoryPanel
         columns.add(new DatePropertyColumn<>(
                 new ResourceModel("dueDate"), "dueDate", "dueDate"));
         columns.add(new PropertyColumn<>(
-                new ResourceModel("owner"), "owner", "owner"));
+                new ResourceModel("assignee"), "assignee", "assignee"));
 
         return columns;
     }
@@ -152,7 +152,29 @@ public class UserRequestFormDirectoryPanel
                 ((BasePage) pageRef.getPage()).getNotificationPanel().refresh(target);
                 target.add(container);
             }
+
         }, ActionLink.ActionType.CLAIM, FlowableEntitlement.USER_REQUEST_FORM_CLAIM);
+
+        panel.add(new ActionLink<UserRequestForm>() {
+
+            private static final long serialVersionUID = -4496313424398213416L;
+
+            @Override
+            public void onClick(final AjaxRequestTarget target, final UserRequestForm ignore) {
+                unclaimForm(model.getObject().getTaskId());
+                SyncopeConsoleSession.get().info(getString(Constants.OPERATION_SUCCEEDED));
+                UserRequestFormDirectoryPanel.this.getTogglePanel().close(target);
+                target.add(container);
+                ((BasePage) pageRef.getPage()).getNotificationPanel().refresh(target);
+            }
+
+            @Override
+            protected boolean statusCondition(final UserRequestForm modelObject) {
+                return SyncopeConsoleSession.get().getSelfTO().getUsername().
+                        equals(model.getObject().getAssignee());
+            }
+
+        }, ActionLink.ActionType.UNCLAIM, FlowableEntitlement.USER_REQUEST_FORM_UNCLAIM);
 
         panel.add(new ActionLink<UserRequestForm>() {
 
@@ -188,7 +210,7 @@ public class UserRequestFormDirectoryPanel
             @Override
             protected boolean statusCondition(final UserRequestForm modelObject) {
                 return SyncopeConsoleSession.get().getSelfTO().getUsername().
-                        equals(model.getObject().getOwner());
+                        equals(model.getObject().getAssignee());
             }
 
         }, ActionLink.ActionType.MANAGE_APPROVAL, FlowableEntitlement.USER_REQUEST_FORM_SUBMIT);
@@ -205,19 +227,19 @@ public class UserRequestFormDirectoryPanel
                 UserRequestForm formTO = model.getObject();
                 UserTO newUserTO;
                 UserTO previousUserTO;
-                if (formTO.getUserPatch() == null) {
+                if (formTO.getUserUR() == null) {
                     newUserTO = formTO.getUserTO();
                     previousUserTO = null;
                 } else if (formTO.getUserTO() == null) {
                     // make it stronger by handling possible NPE
                     previousUserTO = new UserTO();
-                    previousUserTO.setKey(formTO.getUserPatch().getKey());
-                    newUserTO = AnyOperations.patch(previousUserTO, formTO.getUserPatch());
+                    previousUserTO.setKey(formTO.getUserUR().getKey());
+                    newUserTO = AnyOperations.patch(previousUserTO, formTO.getUserUR());
                 } else {
                     previousUserTO = formTO.getUserTO();
-                    formTO.getUserTO().setKey(formTO.getUserPatch().getKey());
+                    formTO.getUserTO().setKey(formTO.getUserUR().getKey());
                     formTO.getUserTO().setPassword(null);
-                    newUserTO = AnyOperations.patch(formTO.getUserTO(), formTO.getUserPatch());
+                    newUserTO = AnyOperations.patch(formTO.getUserTO(), formTO.getUserUR());
                 }
 
                 AjaxWizard.EditItemActionEvent<UserTO> editItemActionEvent =
@@ -237,7 +259,7 @@ public class UserRequestFormDirectoryPanel
             @Override
             protected boolean statusCondition(final UserRequestForm modelObject) {
                 return SyncopeConsoleSession.get().getSelfTO().getUsername().
-                        equals(model.getObject().getOwner());
+                        equals(model.getObject().getAssignee());
             }
 
         }, ActionLink.ActionType.EDIT_APPROVAL, FlowableEntitlement.USER_REQUEST_FORM_SUBMIT);
@@ -305,6 +327,14 @@ public class UserRequestFormDirectoryPanel
         }
     }
 
+    private void unclaimForm(final String taskId) {
+        try {
+            restClient.unclaimForm(taskId);
+        } catch (SyncopeClientException scee) {
+            SyncopeConsoleSession.get().error(getString(Constants.ERROR) + ": " + scee.getMessage());
+        }
+    }
+
     private class FormUserWizardBuilder extends UserWizardBuilder {
 
         private static final long serialVersionUID = 1854981134836384069L;
@@ -327,23 +357,23 @@ public class UserRequestFormDirectoryPanel
         protected Serializable onApplyInternal(final AnyWrapper<UserTO> modelObject) {
             UserTO inner = modelObject.getInnerObject();
 
-            UserPatch patch = AnyOperations.diff(inner, formTO.getUserTO(), false);
+            UserUR userUR = AnyOperations.diff(inner, formTO.getUserTO(), false);
 
             if (StringUtils.isNotBlank(inner.getPassword())) {
                 PasswordPatch passwordPatch = new PasswordPatch.Builder().
                         value(inner.getPassword()).onSyncope(true).resources(inner.
                         getResources()).
                         build();
-                patch.setPassword(passwordPatch);
+                userUR.setPassword(passwordPatch);
             }
 
             // update just if it is changed
             ProvisioningResult<UserTO> result;
-            if (patch.isEmpty()) {
+            if (userUR.isEmpty()) {
                 result = new ProvisioningResult<>();
                 result.setEntity(inner);
             } else {
-                result = userRestClient.update(getOriginalItem().getInnerObject().getETagValue(), patch);
+                result = userRestClient.update(getOriginalItem().getInnerObject().getETagValue(), userUR);
                 restClient.getForm(result.getEntity().getKey()).ifPresent(form -> claimForm(form.getTaskId()));
             }
 

@@ -40,6 +40,8 @@ import org.apache.commons.lang3.SerializationUtils;
 import org.apache.syncope.client.console.commons.ConnIdSpecialName;
 import org.apache.syncope.client.lib.SyncopeClient;
 import org.apache.syncope.common.lib.SyncopeClientException;
+import org.apache.syncope.common.lib.request.AnyObjectCR;
+import org.apache.syncope.common.lib.request.GroupCR;
 import org.apache.syncope.common.lib.to.AnyObjectTO;
 import org.apache.syncope.common.lib.to.GroupTO;
 import org.apache.syncope.common.lib.to.ItemTO;
@@ -54,7 +56,7 @@ import org.apache.syncope.common.lib.types.ClientExceptionType;
 import org.apache.syncope.common.lib.types.ConnConfPropSchema;
 import org.apache.syncope.common.lib.types.ConnConfProperty;
 import org.apache.syncope.common.lib.types.EntityViolationType;
-import org.apache.syncope.common.lib.types.ImplementationType;
+import org.apache.syncope.common.lib.types.IdMImplementationType;
 import org.apache.syncope.common.lib.types.MappingPurpose;
 import org.apache.syncope.common.lib.types.TraceLevel;
 import org.apache.syncope.common.rest.api.beans.ConnObjectTOListQuery;
@@ -104,7 +106,7 @@ public class ResourceITCase extends AbstractITCase {
     @Test
     public void getPropagationActionsClasses() {
         Set<String> actions = syncopeService.platform().
-                getJavaImplInfo(ImplementationType.PROPAGATION_ACTIONS).get().getClasses();
+                getJavaImplInfo(IdMImplementationType.PROPAGATION_ACTIONS).get().getClasses();
         assertNotNull(actions);
         assertFalse(actions.isEmpty());
     }
@@ -406,16 +408,18 @@ public class ResourceITCase extends AbstractITCase {
         ResourceTO resource = resourceService.read(RESOURCE_NAME_DBSCRIPTED);
         resource.setKey(resource.getKey() + getUUIDString());
 
-        AnyObjectTO anyObject = AnyObjectITCase.getSampleTO("syncToken");
-        anyObject.getResources().clear();
-        anyObject.getResources().add(resource.getKey());
+        AnyObjectCR anyObjectCR = AnyObjectITCase.getSample("syncToken");
+        anyObjectCR.getResources().clear();
+        anyObjectCR.getResources().add(resource.getKey());
+
+        AnyObjectTO anyObject = null;
         try {
             // create a new resource
             resource = createResource(resource);
             assertNull(resource.getProvision("PRINTER").get().getSyncToken());
 
             // create some object on the new resource
-            anyObject = createAnyObject(anyObject).getEntity();
+            anyObject = createAnyObject(anyObjectCR).getEntity();
 
             // update sync token
             resourceService.setLatestSyncToken(resource.getKey(), "PRINTER");
@@ -429,7 +433,7 @@ public class ResourceITCase extends AbstractITCase {
             resource = resourceService.read(resource.getKey());
             assertNull(resource.getProvision("PRINTER").get().getSyncToken());
         } finally {
-            if (anyObject.getKey() != null) {
+            if (anyObject != null) {
                 anyObjectService.delete(anyObject.getKey());
             }
             resourceService.delete(resource.getKey());
@@ -517,9 +521,9 @@ public class ResourceITCase extends AbstractITCase {
     public void listConnObjects() {
         List<String> groupKeys = new ArrayList<>();
         for (int i = 0; i < 10; i++) {
-            GroupTO group = GroupITCase.getSampleTO("group");
-            group.getResources().add(RESOURCE_NAME_LDAP);
-            group = createGroup(group).getEntity();
+            GroupCR groupCR = GroupITCase.getSample("group");
+            groupCR.getResources().add(RESOURCE_NAME_LDAP);
+            GroupTO group = createGroup(groupCR).getEntity();
             groupKeys.add(group.getKey());
         }
 

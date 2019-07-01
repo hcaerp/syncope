@@ -26,8 +26,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.tuple.Pair;
-import org.apache.syncope.common.lib.patch.UserPatch;
-import org.apache.syncope.common.lib.to.UserTO;
+import org.apache.syncope.common.lib.request.UserCR;
+import org.apache.syncope.common.lib.request.UserUR;
 import org.apache.syncope.common.lib.to.WorkflowTask;
 import org.apache.syncope.common.lib.to.WorkflowTaskExecInput;
 import org.apache.syncope.core.provisioning.api.PropagationByResource;
@@ -82,16 +82,14 @@ public class FlowableUserWorkflowAdapter extends AbstractUserWorkflowAdapter imp
 
     @Override
     protected WorkflowResult<Pair<String, Boolean>> doCreate(
-            final UserTO userTO,
+            final UserCR userCR,
             final boolean disablePwdPolicyCheck,
-            final Boolean enabled,
-            final boolean storePassword) {
+            final Boolean enabled) {
 
         Map<String, Object> variables = new HashMap<>();
         variables.put(FlowableRuntimeUtils.WF_EXECUTOR, AuthContextUtils.getUsername());
-        variables.put(FlowableRuntimeUtils.USER_TO, userTO);
+        variables.put(FlowableRuntimeUtils.USER_CR, userCR);
         variables.put(FlowableRuntimeUtils.ENABLED, enabled);
-        variables.put(FlowableRuntimeUtils.STORE_PASSWORD, storePassword);
 
         ProcessInstance procInst = null;
         try {
@@ -105,9 +103,9 @@ public class FlowableUserWorkflowAdapter extends AbstractUserWorkflowAdapter imp
         engine.getRuntimeService().removeVariable(
                 procInst.getProcessInstanceId(), FlowableRuntimeUtils.WF_EXECUTOR);
         engine.getRuntimeService().removeVariable(
-                procInst.getProcessInstanceId(), FlowableRuntimeUtils.USER_TO);
+                procInst.getProcessInstanceId(), FlowableRuntimeUtils.USER_CR);
         engine.getRuntimeService().removeVariable(
-                procInst.getProcessInstanceId(), FlowableRuntimeUtils.STORE_PASSWORD);
+                procInst.getProcessInstanceId(), FlowableRuntimeUtils.USER_TO);
 
         User user = engine.getRuntimeService().
                 getVariable(procInst.getProcessInstanceId(), FlowableRuntimeUtils.USER, User.class);
@@ -149,7 +147,7 @@ public class FlowableUserWorkflowAdapter extends AbstractUserWorkflowAdapter imp
                 procInst.getProcessInstanceId(),
                 created,
                 dataBinder.getUserTO(created, true),
-                userTO.getPassword(),
+                userCR.getPassword(),
                 enabled,
                 propByRes);
 
@@ -173,7 +171,7 @@ public class FlowableUserWorkflowAdapter extends AbstractUserWorkflowAdapter imp
             variables.putAll(moreVariables);
         }
 
-        List<Task> tasks = FlowableRuntimeUtils.createTaskQuery(engine, false).processInstanceId(procInstID).list();
+        List<Task> tasks = engine.getTaskService().createTaskQuery().processInstanceId(procInstID).list();
         String task = null;
         if (tasks.size() == 1) {
             try {
@@ -217,12 +215,12 @@ public class FlowableUserWorkflowAdapter extends AbstractUserWorkflowAdapter imp
     }
 
     @Override
-    protected WorkflowResult<Pair<UserPatch, Boolean>> doUpdate(final User user, final UserPatch userPatch) {
+    protected WorkflowResult<Pair<UserUR, Boolean>> doUpdate(final User user, final UserUR userUR) {
         String procInstID = FlowableRuntimeUtils.getWFProcInstID(engine, user.getKey());
 
         // save some existing variable values for later processing, after actual update is made 
-        UserPatch patchBeforeUpdate = engine.getRuntimeService().getVariable(
-                procInstID, FlowableRuntimeUtils.USER_PATCH, UserPatch.class);
+        UserUR beforeUpdate = engine.getRuntimeService().
+                getVariable(procInstID, FlowableRuntimeUtils.USER_UR, UserUR.class);
         PropagationByResource propByResBeforeUpdate = engine.getRuntimeService().getVariable(
                 procInstID, FlowableRuntimeUtils.PROP_BY_RESOURCE, PropagationByResource.class);
 
@@ -230,7 +228,7 @@ public class FlowableUserWorkflowAdapter extends AbstractUserWorkflowAdapter imp
         boolean inFormTask = FlowableRuntimeUtils.getFormTask(engine, procInstID) != null;
 
         Map<String, Object> variables = new HashMap<>(2);
-        variables.put(FlowableRuntimeUtils.USER_PATCH, userPatch);
+        variables.put(FlowableRuntimeUtils.USER_UR, userUR);
         variables.put(FlowableRuntimeUtils.TASK, "update");
 
         Set<String> tasks = doExecuteNextTask(procInstID, user, variables);
@@ -244,17 +242,17 @@ public class FlowableUserWorkflowAdapter extends AbstractUserWorkflowAdapter imp
 
         // if the original status was a form task, restore the patch as before the process started
         if (inFormTask) {
-            if (patchBeforeUpdate == null) {
-                engine.getRuntimeService().removeVariable(procInstID, FlowableRuntimeUtils.USER_PATCH);
+            if (beforeUpdate == null) {
+                engine.getRuntimeService().removeVariable(procInstID, FlowableRuntimeUtils.USER_UR);
             } else {
-                engine.getRuntimeService().setVariable(procInstID, FlowableRuntimeUtils.USER_PATCH, patchBeforeUpdate);
+                engine.getRuntimeService().setVariable(procInstID, FlowableRuntimeUtils.USER_UR, beforeUpdate);
             }
         }
 
         // whether the after status is a form task
         inFormTask = FlowableRuntimeUtils.getFormTask(engine, procInstID) != null;
         if (!inFormTask) {
-            engine.getRuntimeService().removeVariable(procInstID, FlowableRuntimeUtils.USER_PATCH);
+            engine.getRuntimeService().removeVariable(procInstID, FlowableRuntimeUtils.USER_UR);
         }
 
         PropagationByResource propByRes = engine.getRuntimeService().getVariable(
@@ -266,7 +264,7 @@ public class FlowableUserWorkflowAdapter extends AbstractUserWorkflowAdapter imp
                 procInstID,
                 updated,
                 dataBinder.getUserTO(updated, true),
-                userPatch.getPassword() == null ? null : userPatch.getPassword().getValue(),
+                userUR.getPassword() == null ? null : userUR.getPassword().getValue(),
                 null,
                 propByResBeforeUpdate == null ? propByRes : propByResBeforeUpdate);
 
@@ -274,7 +272,7 @@ public class FlowableUserWorkflowAdapter extends AbstractUserWorkflowAdapter imp
                 procInstID, FlowableRuntimeUtils.PROPAGATE_ENABLE, Boolean.class);
         engine.getRuntimeService().removeVariable(procInstID, FlowableRuntimeUtils.PROPAGATE_ENABLE);
 
-        return new WorkflowResult<>(Pair.of(userPatch, propagateEnable), propByRes, tasks);
+        return new WorkflowResult<>(Pair.of(userUR, propagateEnable), propByRes, tasks);
     }
 
     @Override
@@ -328,7 +326,7 @@ public class FlowableUserWorkflowAdapter extends AbstractUserWorkflowAdapter imp
     }
 
     @Override
-    protected WorkflowResult<Pair<UserPatch, Boolean>> doConfirmPasswordReset(
+    protected WorkflowResult<Pair<UserUR, Boolean>> doConfirmPasswordReset(
             final User user, final String token, final String password) {
 
         Map<String, Object> variables = new HashMap<>(5);
@@ -351,9 +349,9 @@ public class FlowableUserWorkflowAdapter extends AbstractUserWorkflowAdapter imp
         PropagationByResource propByRes = engine.getRuntimeService().getVariable(
                 procInstID, FlowableRuntimeUtils.PROP_BY_RESOURCE, PropagationByResource.class);
         engine.getRuntimeService().removeVariable(procInstID, FlowableRuntimeUtils.PROP_BY_RESOURCE);
-        UserPatch updatedPatch = engine.getRuntimeService().getVariable(
-                procInstID, FlowableRuntimeUtils.USER_PATCH, UserPatch.class);
-        engine.getRuntimeService().removeVariable(procInstID, FlowableRuntimeUtils.USER_PATCH);
+        UserUR updatedPatch = engine.getRuntimeService().getVariable(procInstID, FlowableRuntimeUtils.USER_UR,
+                UserUR.class);
+        engine.getRuntimeService().removeVariable(procInstID, FlowableRuntimeUtils.USER_UR);
         Boolean propagateEnable = engine.getRuntimeService().getVariable(
                 procInstID, FlowableRuntimeUtils.PROPAGATE_ENABLE, Boolean.class);
         engine.getRuntimeService().removeVariable(procInstID, FlowableRuntimeUtils.PROPAGATE_ENABLE);
@@ -413,8 +411,8 @@ public class FlowableUserWorkflowAdapter extends AbstractUserWorkflowAdapter imp
         FlowableRuntimeUtils.updateStatus(engine, procInstID, user);
         user = userDAO.save(user);
 
-        engine.getRuntimeService().setVariable(
-                procInstID, FlowableRuntimeUtils.USER_TO, dataBinder.getUserTO(user, true));
+        engine.getRuntimeService().setVariable(procInstID, FlowableRuntimeUtils.USER_TO, dataBinder.
+                getUserTO(user, true));
 
         if (engine.getRuntimeService().createProcessInstanceQuery().
                 processInstanceId(procInstID).active().list().isEmpty()) {
@@ -461,8 +459,7 @@ public class FlowableUserWorkflowAdapter extends AbstractUserWorkflowAdapter imp
 
         List<String> availableTasks = new ArrayList<>();
         try {
-            Task currentTask = FlowableRuntimeUtils.createTaskQuery(engine, false).
-                    processInstanceId(procInstID).singleResult();
+            Task currentTask = engine.getTaskService().createTaskQuery().processInstanceId(procInstID).singleResult();
 
             Process process = engine.getRepositoryService().
                     getBpmnModel(FlowableRuntimeUtils.getLatestProcDefByKey(

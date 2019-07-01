@@ -44,9 +44,10 @@ import org.apache.syncope.client.lib.BasicAuthenticationHandler;
 import org.apache.syncope.client.lib.SyncopeClient;
 import org.apache.syncope.client.lib.SyncopeClientFactoryBean;
 import org.apache.syncope.common.lib.SyncopeClientException;
-import org.apache.syncope.common.lib.patch.GroupPatch;
-import org.apache.syncope.common.lib.patch.StringReplacePatchItem;
-import org.apache.syncope.common.lib.patch.UserPatch;
+import org.apache.syncope.common.lib.request.GroupCR;
+import org.apache.syncope.common.lib.request.GroupUR;
+import org.apache.syncope.common.lib.request.StringReplacePatchItem;
+import org.apache.syncope.common.lib.request.UserUR;
 import org.apache.syncope.common.lib.to.ConnInstanceTO;
 import org.apache.syncope.common.lib.to.GroupTO;
 import org.apache.syncope.common.lib.to.ProvisioningResult;
@@ -102,23 +103,23 @@ public class RESTITCase extends AbstractITCase {
         GroupService noContentService = noContentclient.prefer(
                 noContentclient.getService(GroupService.class), Preference.RETURN_NO_CONTENT);
 
-        GroupTO group = GroupITCase.getSampleTO("noContent");
+        GroupCR groupCR = GroupITCase.getSample("noContent");
 
-        Response response = noContentService.create(group);
+        Response response = noContentService.create(groupCR);
         assertEquals(Response.Status.CREATED.getStatusCode(), response.getStatus());
         assertEquals(Preference.RETURN_NO_CONTENT.toString(), response.getHeaderString(RESTHeaders.PREFERENCE_APPLIED));
         assertEquals(
                 StringUtils.EMPTY,
                 IOUtils.toString((InputStream) response.getEntity(), StandardCharsets.UTF_8));
 
-        group = getObject(response.getLocation(), GroupService.class, GroupTO.class);
+        GroupTO group = getObject(response.getLocation(), GroupService.class, GroupTO.class);
         assertNotNull(group);
 
-        GroupPatch groupPatch = new GroupPatch();
-        groupPatch.setKey(group.getKey());
-        groupPatch.getPlainAttrs().add(attrAddReplacePatch("badge", "xxxxxxxxxx"));
+        GroupUR groupUR = new GroupUR();
+        groupUR.setKey(group.getKey());
+        groupUR.getPlainAttrs().add(attrAddReplacePatch("badge", "xxxxxxxxxx"));
 
-        response = noContentService.update(groupPatch);
+        response = noContentService.update(groupUR);
         assertEquals(Response.Status.NO_CONTENT.getStatusCode(), response.getStatus());
         assertEquals(Preference.RETURN_NO_CONTENT.toString(), response.getHeaderString(RESTHeaders.PREFERENCE_APPLIED));
         assertEquals(
@@ -135,7 +136,7 @@ public class RESTITCase extends AbstractITCase {
 
     @Test
     public void ifMatch() {
-        UserTO userTO = userService.create(UserITCase.getUniqueSampleTO("ifmatch@syncope.apache.org"), true).
+        UserTO userTO = userService.create(UserITCase.getUniqueSample("ifmatch@syncope.apache.org")).
                 readEntity(new GenericType<ProvisioningResult<UserTO>>() {
                 }).getEntity();
         assertNotNull(userTO);
@@ -145,19 +146,19 @@ public class RESTITCase extends AbstractITCase {
         assertNotNull(etag);
         assertTrue(StringUtils.isNotBlank(etag.getValue()));
 
-        UserPatch userPatch = new UserPatch();
-        userPatch.setKey(userTO.getKey());
-        userPatch.setUsername(new StringReplacePatchItem.Builder().value(userTO.getUsername() + "XX").build());
-        userTO = userService.update(userPatch).readEntity(new GenericType<ProvisioningResult<UserTO>>() {
+        UserUR userUR = new UserUR();
+        userUR.setKey(userTO.getKey());
+        userUR.setUsername(new StringReplacePatchItem.Builder().value(userTO.getUsername() + "XX").build());
+        userTO = userService.update(userUR).readEntity(new GenericType<ProvisioningResult<UserTO>>() {
         }).getEntity();
         assertTrue(userTO.getUsername().endsWith("XX"));
         EntityTag etag1 = adminClient.getLatestEntityTag(userService);
         assertFalse(etag.getValue().equals(etag1.getValue()));
 
         UserService ifMatchService = adminClient.ifMatch(adminClient.getService(UserService.class), etag);
-        userPatch.setUsername(new StringReplacePatchItem.Builder().value(userTO.getUsername() + "YY").build());
+        userUR.setUsername(new StringReplacePatchItem.Builder().value(userTO.getUsername() + "YY").build());
         try {
-            ifMatchService.update(userPatch);
+            ifMatchService.update(userUR);
             fail("This should not happen");
         } catch (SyncopeClientException e) {
             assertEquals(ClientExceptionType.ConcurrentModification, e.getType());
@@ -190,5 +191,21 @@ public class RESTITCase extends AbstractITCase {
         // check that application/json was received
         String contentType = WebClient.client(service).getResponse().getHeaderString(HttpHeaders.CONTENT_TYPE);
         assertTrue(contentType.startsWith(MediaType.APPLICATION_JSON));
+    }
+
+    @Test
+    public void exportInternalStorageContent() throws IOException {
+        Response response = syncopeService.exportInternalStorageContent();
+        assertNotNull(response);
+        assertEquals(Response.Status.OK.getStatusCode(), response.getStatusInfo().getStatusCode());
+        assertTrue(response.getMediaType().toString().startsWith(MediaType.TEXT_XML));
+        String contentDisposition = response.getHeaderString(HttpHeaders.CONTENT_DISPOSITION);
+        assertNotNull(contentDisposition);
+
+        Object entity = response.getEntity();
+        assertTrue(entity instanceof InputStream);
+        String configExport = IOUtils.toString((InputStream) entity, StandardCharsets.UTF_8.name());
+        assertFalse(configExport.isEmpty());
+        assertTrue(configExport.length() > 1000);
     }
 }

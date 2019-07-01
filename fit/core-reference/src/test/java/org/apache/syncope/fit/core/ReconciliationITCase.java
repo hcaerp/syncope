@@ -25,9 +25,9 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Date;
-import javax.sql.DataSource;
+import org.apache.syncope.common.lib.request.AnyObjectCR;
 import org.apache.syncope.common.lib.to.AnyObjectTO;
-import org.apache.syncope.common.lib.to.AttrTO;
+import org.apache.syncope.common.lib.Attr;
 import org.apache.syncope.common.lib.to.PullTaskTO;
 import org.apache.syncope.common.lib.to.PushTaskTO;
 import org.apache.syncope.common.lib.to.ReconStatus;
@@ -36,22 +36,16 @@ import org.apache.syncope.common.lib.types.UnmatchingRule;
 import org.apache.syncope.fit.AbstractITCase;
 import org.identityconnectors.framework.common.objects.OperationalAttributes;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 
-@SpringJUnitConfig(locations = { "classpath:testJDBCEnv.xml" })
 public class ReconciliationITCase extends AbstractITCase {
-
-    @Autowired
-    private DataSource testDataSource;
 
     @Test
     public void push() {
         // 1. create printer, with no resources
-        AnyObjectTO printer = AnyObjectITCase.getSampleTO("reconciliation");
-        printer.getResources().clear();
-        printer = createAnyObject(printer).getEntity();
+        AnyObjectCR printerCR = AnyObjectITCase.getSample("reconciliation");
+        printerCR.getResources().clear();
+        AnyObjectTO printer = createAnyObject(printerCR).getEntity();
         assertNotNull(printer.getKey());
 
         // 2. verify no printer with that name is on the external resource's db
@@ -87,7 +81,7 @@ public class ReconciliationITCase extends AbstractITCase {
         assertNotNull(status.getOnResource());
 
         // __ENABLE__ management depends on the actual connector...
-        AttrTO enable = status.getOnSyncope().getAttr(OperationalAttributes.ENABLE_NAME).orElse(null);
+        Attr enable = status.getOnSyncope().getAttr(OperationalAttributes.ENABLE_NAME).orElse(null);
         if (enable != null) {
             status.getOnSyncope().getAttrs().remove(enable);
         }
@@ -97,9 +91,9 @@ public class ReconciliationITCase extends AbstractITCase {
     @Test
     public void pull() {
         // 1. create printer, with no resources
-        AnyObjectTO printer = AnyObjectITCase.getSampleTO("reconciliation");
-        printer.getResources().clear();
-        printer = createAnyObject(printer).getEntity();
+        AnyObjectCR printerCR = AnyObjectITCase.getSample("reconciliation");
+        printerCR.getResources().clear();
+        AnyObjectTO printer = createAnyObject(printerCR).getEntity();
         assertNotNull(printer.getKey());
         assertNotEquals("Nowhere", printer.getPlainAttr("location").get().getValues().get(0));
 

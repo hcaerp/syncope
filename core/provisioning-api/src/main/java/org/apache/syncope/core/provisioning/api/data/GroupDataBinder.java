@@ -19,7 +19,8 @@
 package org.apache.syncope.core.provisioning.api.data;
 
 import java.util.Map;
-import org.apache.syncope.common.lib.patch.GroupPatch;
+import org.apache.syncope.common.lib.request.GroupCR;
+import org.apache.syncope.common.lib.request.GroupUR;
 import org.apache.syncope.common.lib.to.GroupTO;
 import org.apache.syncope.common.lib.to.TypeExtensionTO;
 import org.apache.syncope.core.provisioning.api.PropagationByResource;
@@ -34,9 +35,9 @@ public interface GroupDataBinder {
 
     GroupTO getGroupTO(Group group, boolean details);
 
-    void create(Group group, GroupTO groupTO);
+    void create(Group group, GroupCR groupCR);
 
-    PropagationByResource update(Group group, GroupPatch groupPatch);
+    PropagationByResource update(Group group, GroupUR groupUR);
 
     /**
      * Finds any objects having resources assigned exclusively because of memberships of the given group.

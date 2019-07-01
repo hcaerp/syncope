@@ -19,12 +19,16 @@
 package org.apache.syncope.core.spring.security;
 
 import javax.annotation.Resource;
+import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.tuple.Pair;
+import org.apache.syncope.common.keymaster.client.api.DomainOps;
+import org.apache.syncope.common.keymaster.client.api.KeymasterException;
+import org.apache.syncope.common.keymaster.client.api.model.Domain;
 import org.apache.syncope.common.lib.SyncopeConstants;
 import org.apache.syncope.common.lib.types.AuditElements;
 import org.apache.syncope.common.lib.types.AuditElements.Result;
 import org.apache.syncope.common.lib.types.CipherAlgorithm;
-import org.apache.syncope.core.persistence.api.entity.Domain;
+import org.apache.syncope.core.persistence.api.dao.NotFoundException;
 import org.apache.syncope.core.persistence.api.entity.user.User;
 import org.apache.syncope.core.provisioning.api.UserProvisioningManager;
 import org.slf4j.Logger;
@@ -44,13 +48,16 @@ public class UsernamePasswordAuthenticationProvider implements AuthenticationPro
     protected static final Encryptor ENCRYPTOR = Encryptor.getInstance();
 
     @Autowired
+    protected DomainOps domainOps;
+
+    @Autowired
     protected AuthDataAccessor dataAccessor;
 
     @Autowired
     protected UserProvisioningManager provisioningManager;
 
     @Autowired
-    private DefaultCredentialChecker credentialChecker;
+    protected DefaultCredentialChecker credentialChecker;
 
     @Resource(name = "adminUser")
     protected String adminUser;
@@ -90,10 +97,23 @@ public class UsernamePasswordAuthenticationProvider implements AuthenticationPro
 
     @Override
     public Authentication authenticate(final Authentication authentication) {
-        String domainKey = SyncopeAuthenticationDetails.class.cast(authentication.getDetails()).getDomain();
+        Domain domain;
+        if (SyncopeConstants.MASTER_DOMAIN.equals(
+                SyncopeAuthenticationDetails.class.cast(authentication.getDetails()).getDomain())) {
 
-        final String[] username = new String[1];
-        Boolean authenticated;
+            domain = new Domain.Builder(SyncopeConstants.MASTER_DOMAIN).build();
+        } else {
+            try {
+                domain = domainOps.read(
+                        SyncopeAuthenticationDetails.class.cast(authentication.getDetails()).getDomain());
+            } catch (NotFoundException | KeymasterException e) {
+                throw new BadCredentialsException("Could not find domain "
+                        + SyncopeAuthenticationDetails.class.cast(authentication.getDetails()).getDomain(), e);
+            }
+        }
+
+        String[] username = new String[1];
+        boolean authenticated;
 
         if (anonymousUser.equals(authentication.getName())) {
             username[0] = anonymousUser;
@@ -101,32 +121,27 @@ public class UsernamePasswordAuthenticationProvider implements AuthenticationPro
             authenticated = authentication.getCredentials().toString().equals(anonymousKey);
         } else if (adminUser.equals(authentication.getName())) {
             username[0] = adminUser;
-            if (SyncopeConstants.MASTER_DOMAIN.equals(domainKey)) {
+            if (SyncopeConstants.MASTER_DOMAIN.equals(domain.getKey())) {
                 credentialChecker.checkIsDefaultAdminPasswordInUse();
                 authenticated = ENCRYPTOR.verify(
                         authentication.getCredentials().toString(),
                         CipherAlgorithm.valueOf(adminPasswordAlgorithm),
                         adminPassword);
             } else {
-                final String domainToFind = domainKey;
-                authenticated = AuthContextUtils.execWithAuthContext(SyncopeConstants.MASTER_DOMAIN, () -> {
-                    Domain domain = dataAccessor.findDomain(domainToFind);
-
-                    return ENCRYPTOR.verify(
-                            authentication.getCredentials().toString(),
-                            domain.getAdminCipherAlgorithm(),
-                            domain.getAdminPwd());
-                });
+                authenticated = ENCRYPTOR.verify(
+                        authentication.getCredentials().toString(),
+                        domain.getAdminCipherAlgorithm(),
+                        domain.getAdminPassword());
             }
         } else {
-            final Pair<User, Boolean> authResult =
-                    AuthContextUtils.execWithAuthContext(domainKey, () -> dataAccessor.authenticate(authentication));
-            authenticated = authResult.getValue();
+            Pair<User, Boolean> authResult = AuthContextUtils.callAsAdmin(domain.getKey(),
+                    () -> dataAccessor.authenticate(domain.getKey(), authentication));
+            authenticated = BooleanUtils.toBoolean(authResult.getRight());
             if (authResult.getLeft() != null && authResult.getRight() != null) {
                 username[0] = authResult.getLeft().getUsername();
 
                 if (!authResult.getRight()) {
-                    AuthContextUtils.execWithAuthContext(domainKey, () -> {
+                    AuthContextUtils.callAsAdmin(domain.getKey(), () -> {
                         provisioningManager.internalSuspend(authResult.getLeft().getKey());
                         return null;
                     });
@@ -137,45 +152,58 @@ public class UsernamePasswordAuthenticationProvider implements AuthenticationPro
             username[0] = authentication.getPrincipal().toString();
         }
 
-        final boolean isAuthenticated = authenticated != null && authenticated;
+        return finalizeAuthentication(authenticated, domain.getKey(), username[0], authentication);
+    }
+
+    protected Authentication finalizeAuthentication(
+            final boolean authenticated,
+            final String domain,
+            final String username,
+            final Authentication authentication) {
+
         UsernamePasswordAuthenticationToken token;
-        if (isAuthenticated) {
-            token = AuthContextUtils.execWithAuthContext(domainKey, () -> {
-                UsernamePasswordAuthenticationToken token1 = new UsernamePasswordAuthenticationToken(
-                        username[0],
+        if (authenticated) {
+            token = AuthContextUtils.callAsAdmin(domain, () -> {
+                UsernamePasswordAuthenticationToken upat = new UsernamePasswordAuthenticationToken(
+                        username,
                         null,
-                        dataAccessor.getAuthorities(username[0]));
-                token1.setDetails(authentication.getDetails());
+                        dataAccessor.getAuthorities(username));
+                upat.setDetails(authentication.getDetails());
                 dataAccessor.audit(
-                        username[0],
+                        username,
                         AuditElements.EventCategoryType.LOGIC,
-                        AuditElements.AUTHENTICATION_CATEGORY, null,
-                        AuditElements.LOGIN_EVENT, Result.SUCCESS, null, isAuthenticated, authentication,
-                        "Successfully authenticated, with entitlements: " + token1.getAuthorities());
-                return token1;
+                        AuditElements.AUTHENTICATION_CATEGORY,
+                        null,
+                        AuditElements.LOGIN_EVENT,
+                        Result.SUCCESS,
+                        null,
+                        authenticated,
+                        authentication,
+                        "User " + username + " successfully authenticated with entitlements: " + upat.getAuthorities());
+                return upat;
             });
 
             LOG.debug("User {} successfully authenticated, with entitlements {}",
-                    username[0], token.getAuthorities());
+                    username, token.getAuthorities());
         } else {
-            AuthContextUtils.execWithAuthContext(domainKey, () -> {
+            AuthContextUtils.callAsAdmin(domain, () -> {
                 dataAccessor.audit(
-                        username[0],
+                        username,
                         AuditElements.EventCategoryType.LOGIC,
                         AuditElements.AUTHENTICATION_CATEGORY,
                         null,
                         AuditElements.LOGIN_EVENT,
                         Result.FAILURE,
                         null,
-                        isAuthenticated,
+                        authenticated,
                         authentication,
-                        "User " + username[0] + " not authenticated");
+                        "User " + username + " not authenticated");
                 return null;
             });
 
-            LOG.debug("User {} not authenticated", username[0]);
+            LOG.debug("User {} not authenticated", username);
 
-            throw new BadCredentialsException("User " + username[0] + " not authenticated");
+            throw new BadCredentialsException("User " + username + " not authenticated");
         }
 
         return token;

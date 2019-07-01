@@ -18,6 +18,8 @@
  */
 package org.apache.syncope.core.provisioning.java.job;
 
+import java.io.IOException;
+import java.util.concurrent.ExecutionException;
 import org.apache.syncope.common.lib.types.AnyTypeKind;
 import org.apache.syncope.core.persistence.api.dao.AnyDAO;
 import org.apache.syncope.core.persistence.api.dao.AnyObjectDAO;
@@ -32,11 +34,12 @@ import org.apache.syncope.ext.elasticsearch.client.ElasticsearchUtils;
 import org.elasticsearch.action.admin.indices.create.CreateIndexRequest;
 import org.elasticsearch.action.admin.indices.create.CreateIndexResponse;
 import org.elasticsearch.action.admin.indices.delete.DeleteIndexRequest;
-import org.elasticsearch.action.admin.indices.exists.indices.IndicesExistsRequest;
-import org.elasticsearch.action.admin.indices.exists.indices.IndicesExistsResponse;
+import org.elasticsearch.action.admin.indices.get.GetIndexRequest;
+import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.action.index.IndexResponse;
 import org.elasticsearch.action.support.master.AcknowledgedResponse;
-import org.elasticsearch.client.Client;
+import org.elasticsearch.client.RequestOptions;
+import org.elasticsearch.client.RestHighLevelClient;
 import org.elasticsearch.common.xcontent.XContentBuilder;
 import org.elasticsearch.common.xcontent.XContentFactory;
 import org.quartz.JobExecutionException;
@@ -48,7 +51,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 public class ElasticsearchReindex extends AbstractSchedTaskJobDelegate {
 
     @Autowired
-    private Client client;
+    private RestHighLevelClient client;
 
     @Autowired
     private ElasticsearchUtils elasticsearchUtils;
@@ -65,104 +68,121 @@ public class ElasticsearchReindex extends AbstractSchedTaskJobDelegate {
     @Override
     protected String doExecute(final boolean dryRun) throws JobExecutionException {
         if (!dryRun) {
+            LOG.debug("Start rebuilding indexes");
+
             try {
-                LOG.debug("Start rebuild index {}", AuthContextUtils.getDomain().toLowerCase());
+                removeIndexIfExists(AnyTypeKind.USER);
+                removeIndexIfExists(AnyTypeKind.GROUP);
+                removeIndexIfExists(AnyTypeKind.ANY_OBJECT);
 
-                IndicesExistsResponse existsIndexResponse = client.admin().indices().
-                        exists(new IndicesExistsRequest(AuthContextUtils.getDomain().toLowerCase())).
-                        get();
-                if (existsIndexResponse.isExists()) {
-                    AcknowledgedResponse acknowledgedResponse = client.admin().indices().
-                            delete(new DeleteIndexRequest(AuthContextUtils.getDomain().toLowerCase())).
-                            get();
-                    LOG.debug("Successfully removed {}: {}",
-                            AuthContextUtils.getDomain().toLowerCase(), acknowledgedResponse);
-                }
-
-                XContentBuilder settings = XContentFactory.jsonBuilder().
-                        startObject().
-                        startObject("analysis").
-                        startObject("analyzer").
-                        startObject("string_lowercase").
-                        field("type", "custom").
-                        field("tokenizer", "standard").
-                        field("filter").
-                        startArray().
-                        value("lowercase").
-                        endArray().
-                        endObject().
-                        endObject().
-                        endObject().
-                        endObject();
-                XContentBuilder mapping = XContentFactory.jsonBuilder().
-                        startObject().
-                        startArray("dynamic_templates").
-                        startObject().
-                        startObject("strings").
-                        field("match_mapping_type", "string").
-                        startObject("mapping").
-                        field("type", "keyword").
-                        field("analyzer", "string_lowercase").
-                        endObject().
-                        endObject().
-                        endObject().
-                        endArray().
-                        endObject();
-                CreateIndexResponse createIndexResponse = client.admin().indices().
-                        create(new CreateIndexRequest(AuthContextUtils.getDomain().toLowerCase()).
-                                settings(settings).
-                                mapping(AnyTypeKind.USER.name(), mapping).
-                                mapping(AnyTypeKind.GROUP.name(), mapping).
-                                mapping(AnyTypeKind.ANY_OBJECT.name(), mapping)).
-                        get();
-                LOG.debug("Successfully created {}: {}",
-                        AuthContextUtils.getDomain().toLowerCase(), createIndexResponse);
+                createIndex(AnyTypeKind.USER);
+                createIndex(AnyTypeKind.GROUP);
+                createIndex(AnyTypeKind.ANY_OBJECT);
 
                 LOG.debug("Indexing users...");
                 for (int page = 1; page <= (userDAO.count() / AnyDAO.DEFAULT_PAGE_SIZE) + 1; page++) {
+
                     for (User user : userDAO.findAll(page, AnyDAO.DEFAULT_PAGE_SIZE)) {
-                        IndexResponse response = client.prepareIndex(
-                                AuthContextUtils.getDomain().toLowerCase(),
+                        IndexRequest request = new IndexRequest(
+                                elasticsearchUtils.getContextDomainName(AnyTypeKind.USER),
                                 AnyTypeKind.USER.name(),
                                 user.getKey()).
-                                setSource(elasticsearchUtils.builder(user)).
-                                get();
+                                source(elasticsearchUtils.builder(user));
+                        IndexResponse response = client.index(request, RequestOptions.DEFAULT);
                         LOG.debug("Index successfully created for {}: {}", user, response);
                     }
                 }
+
                 LOG.debug("Indexing groups...");
                 for (int page = 1; page <= (groupDAO.count() / AnyDAO.DEFAULT_PAGE_SIZE) + 1; page++) {
                     for (Group group : groupDAO.findAll(page, AnyDAO.DEFAULT_PAGE_SIZE)) {
-                        IndexResponse response = client.prepareIndex(
-                                AuthContextUtils.getDomain().toLowerCase(),
+                        IndexRequest request = new IndexRequest(
+                                elasticsearchUtils.getContextDomainName(AnyTypeKind.GROUP),
                                 AnyTypeKind.GROUP.name(),
                                 group.getKey()).
-                                setSource(elasticsearchUtils.builder(group)).
-                                get();
+                                source(elasticsearchUtils.builder(group));
+                        IndexResponse response = client.index(request, RequestOptions.DEFAULT);
                         LOG.debug("Index successfully created for {}: {}", group, response);
                     }
                 }
+
                 LOG.debug("Indexing any objects...");
                 for (int page = 1; page <= (anyObjectDAO.count() / AnyDAO.DEFAULT_PAGE_SIZE) + 1; page++) {
                     for (AnyObject anyObject : anyObjectDAO.findAll(page, AnyDAO.DEFAULT_PAGE_SIZE)) {
-                        IndexResponse response = client.prepareIndex(
-                                AuthContextUtils.getDomain().toLowerCase(),
+                        IndexRequest request = new IndexRequest(
+                                elasticsearchUtils.getContextDomainName(AnyTypeKind.ANY_OBJECT),
                                 AnyTypeKind.ANY_OBJECT.name(),
                                 anyObject.getKey()).
-                                setSource(elasticsearchUtils.builder(anyObject)).
-                                get();
+                                source(elasticsearchUtils.builder(anyObject));
+                        IndexResponse response = client.index(request, RequestOptions.DEFAULT);
                         LOG.debug("Index successfully created for {}: {}", anyObject, response);
                     }
                 }
 
-                LOG.debug("Rebuild index {} successfully completed", AuthContextUtils.getDomain().toLowerCase());
+                LOG.debug("Rebuild indexes for domain {} successfully completed", AuthContextUtils.getDomain());
             } catch (Exception e) {
-                throw new JobExecutionException(
-                        "While rebuilding index " + AuthContextUtils.getDomain().toLowerCase(), e);
+                throw new JobExecutionException("While rebuilding index for domain " + AuthContextUtils.getDomain(), e);
             }
         }
 
         return "SUCCESS";
+    }
+
+    private void removeIndexIfExists(final AnyTypeKind kind) throws IOException {
+        if (client.indices().exists(
+                new GetIndexRequest().indices(elasticsearchUtils.getContextDomainName(kind)), RequestOptions.DEFAULT)) {
+
+            AcknowledgedResponse acknowledgedResponse = client.indices().delete(
+                    new DeleteIndexRequest(elasticsearchUtils.getContextDomainName(kind)), RequestOptions.DEFAULT);
+            LOG.debug("Successfully removed {}: {}",
+                    elasticsearchUtils.getContextDomainName(kind), acknowledgedResponse);
+        }
+    }
+
+    private void createIndex(final AnyTypeKind kind)
+            throws InterruptedException, ExecutionException, IOException {
+
+        XContentBuilder settings = XContentFactory.jsonBuilder().
+                startObject().
+                startObject("analysis").
+                startObject("analyzer").
+                startObject("string_lowercase").
+                field("type", "custom").
+                field("tokenizer", "standard").
+                field("filter").
+                startArray().
+                value("lowercase").
+                endArray().
+                endObject().
+                endObject().
+                endObject().
+                startObject("index").
+                field("number_of_shards", elasticsearchUtils.getNumberOfShards()).
+                field("number_of_replicas", elasticsearchUtils.getNumberOfReplicas()).
+                endObject().
+                endObject();
+
+        XContentBuilder mapping = XContentFactory.jsonBuilder().
+                startObject().
+                startArray("dynamic_templates").
+                startObject().
+                startObject("strings").
+                field("match_mapping_type", "string").
+                startObject("mapping").
+                field("type", "keyword").
+                field("analyzer", "string_lowercase").
+                endObject().
+                endObject().
+                endObject().
+                endArray().
+                endObject();
+
+        CreateIndexResponse response = client.indices().create(
+                new CreateIndexRequest(elasticsearchUtils.getContextDomainName(kind)).
+                        settings(settings).
+                        mapping(kind.name(), mapping), RequestOptions.DEFAULT);
+        LOG.debug("Successfully created {} for {}: {}",
+                elasticsearchUtils.getContextDomainName(kind), kind.name(), response);
     }
 
     @Override

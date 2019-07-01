@@ -35,7 +35,6 @@ import org.apache.syncope.core.persistence.api.dao.GroupDAO;
 import org.apache.syncope.core.persistence.api.dao.AnySearchDAO;
 import org.apache.syncope.core.persistence.api.dao.AnyTypeDAO;
 import org.apache.syncope.core.persistence.api.dao.RealmDAO;
-import org.apache.syncope.core.persistence.api.dao.UserDAO;
 import org.apache.syncope.core.persistence.api.dao.search.AttributeCond;
 import org.apache.syncope.core.persistence.api.dao.search.MembershipCond;
 import org.apache.syncope.core.persistence.api.dao.search.OrderByClause;
@@ -47,7 +46,6 @@ import org.apache.syncope.core.persistence.api.dao.search.AnyTypeCond;
 import org.apache.syncope.core.persistence.api.dao.search.AssignableCond;
 import org.apache.syncope.core.persistence.api.dao.search.MemberCond;
 import org.apache.syncope.core.persistence.api.dao.search.PrivilegeCond;
-import org.apache.syncope.core.persistence.api.dao.search.RelationshipCond;
 import org.apache.syncope.core.persistence.api.dao.search.RelationshipTypeCond;
 import org.apache.syncope.core.persistence.api.entity.AnyType;
 import org.apache.syncope.core.persistence.api.entity.Entity;
@@ -67,9 +65,6 @@ public class AnySearchTest extends AbstractTest {
     private AnyObjectDAO anyObjectDAO;
 
     @Autowired
-    private UserDAO userDAO;
-
-    @Autowired
     private GroupDAO groupDAO;
 
     @Autowired
@@ -80,64 +75,6 @@ public class AnySearchTest extends AbstractTest {
 
     @Autowired
     private RealmDAO realmDAO;
-
-    @Test
-    public void anyObjectMatch() {
-        AnyObject anyObject = anyObjectDAO.find("fc6dbc3a-6c07-4965-8781-921e7401a4a5");
-        assertNotNull(anyObject);
-
-        RelationshipCond relationshipCond = new RelationshipCond();
-        relationshipCond.setAnyObject("Canon MF 8030cn");
-        assertTrue(searchDAO.matches(anyObject, SearchCond.getLeafCond(relationshipCond)));
-
-        RelationshipTypeCond relationshipTypeCond = new RelationshipTypeCond();
-        relationshipTypeCond.setRelationshipTypeKey("neighborhood");
-        assertTrue(searchDAO.matches(anyObject, SearchCond.getLeafCond(relationshipTypeCond)));
-    }
-
-    @Test
-    public void userMatch() {
-        User user = userDAO.find("1417acbe-cbf6-4277-9372-e75e04f97000");
-        assertNotNull(user);
-
-        MembershipCond groupCond = new MembershipCond();
-        groupCond.setGroup("secretary");
-        assertFalse(searchDAO.matches(user, SearchCond.getLeafCond(groupCond)));
-
-        groupCond.setGroup("root");
-        assertTrue(searchDAO.matches(user, SearchCond.getLeafCond(groupCond)));
-
-        RoleCond roleCond = new RoleCond();
-        roleCond.setRole("Other");
-        assertTrue(searchDAO.matches(user, SearchCond.getLeafCond(roleCond)));
-
-        PrivilegeCond privilegeCond = new PrivilegeCond();
-        privilegeCond.setPrivilege("postMighty");
-        assertTrue(searchDAO.matches(user, SearchCond.getLeafCond(privilegeCond)));
-
-        user = userDAO.find("c9b2dec2-00a7-4855-97c0-d854842b4b24");
-        assertNotNull(user);
-
-        RelationshipCond relationshipCond = new RelationshipCond();
-        relationshipCond.setAnyObject("fc6dbc3a-6c07-4965-8781-921e7401a4a5");
-        assertTrue(searchDAO.matches(user, SearchCond.getLeafCond(relationshipCond)));
-
-        RelationshipTypeCond relationshipTypeCond = new RelationshipTypeCond();
-        relationshipTypeCond.setRelationshipTypeKey("neighborhood");
-        assertTrue(searchDAO.matches(user, SearchCond.getLeafCond(relationshipTypeCond)));
-    }
-
-    @Test
-    public void groupMatch() {
-        Group group = groupDAO.find("37d15e4c-cdc1-460b-a591-8505c8133806");
-        assertNotNull(group);
-
-        AttributeCond attrCond = new AttributeCond();
-        attrCond.setSchema("show");
-        attrCond.setType(AttributeCond.Type.ISNOTNULL);
-
-        assertTrue(searchDAO.matches(group, SearchCond.getLeafCond(attrCond)));
-    }
 
     @Test
     public void searchWithLikeCondition() {
@@ -702,7 +639,7 @@ public class AnySearchTest extends AbstractTest {
         anyObject.add(membership);
         anyObjectDAO.save(anyObject);
 
-        anyObjectDAO.flush();
+        entityManager().flush();
 
         MembershipCond groupCond = new MembershipCond();
         groupCond.setGroup("citizen");
@@ -746,5 +683,61 @@ public class AnySearchTest extends AbstractTest {
                 orderByClauses,
                 AnyTypeKind.USER);
         assertFalse(users.isEmpty());
+    }
+
+    @Test
+    public void issueSYNCOPE1416() {
+        AttributeCond idLeftCond = new AttributeCond(AttributeCond.Type.ISNOTNULL);
+        idLeftCond.setSchema("surname");
+
+        AttributeCond idRightCond = new AttributeCond(AttributeCond.Type.ISNOTNULL);
+        idRightCond.setSchema("firstname");
+
+        SearchCond searchCondition = SearchCond.getAndCond(
+                SearchCond.getLeafCond(idLeftCond), SearchCond.getLeafCond(idRightCond));
+
+        List<OrderByClause> orderByClauses = new ArrayList<>();
+        OrderByClause orderByClause = new OrderByClause();
+        orderByClause.setField("ctype");
+        orderByClause.setDirection(OrderByClause.Direction.ASC);
+        orderByClauses.add(orderByClause);
+
+        List<User> users = searchDAO.search(searchCondition, orderByClauses, AnyTypeKind.USER);
+        assertEquals(
+                searchDAO.count(SyncopeConstants.FULL_ADMIN_REALMS, searchCondition, AnyTypeKind.USER),
+                users.size());
+
+        // search by attribute with unique constraint
+        AttributeCond fullnameCond = new AttributeCond(AttributeCond.Type.ISNOTNULL);
+        fullnameCond.setSchema("fullname");
+
+        SearchCond cond = SearchCond.getLeafCond(fullnameCond);
+        assertTrue(cond.isValid());
+
+        users = searchDAO.search(cond, AnyTypeKind.USER);
+        assertEquals(5, users.size());
+
+        fullnameCond = new AttributeCond(AttributeCond.Type.ISNULL);
+        fullnameCond.setSchema("fullname");
+
+        cond = SearchCond.getLeafCond(fullnameCond);
+        assertTrue(cond.isValid());
+
+        users = searchDAO.search(cond, AnyTypeKind.USER);
+        assertTrue(users.isEmpty());
+    }
+
+    @Test
+    public void issueSYNCOPE1419() {
+        AttributeCond loginDateCond = new AttributeCond(AttributeCond.Type.EQ);
+        loginDateCond.setSchema("loginDate");
+        loginDateCond.setExpression("2009-05-26");
+
+        SearchCond cond = SearchCond.getNotLeafCond(loginDateCond);
+        assertTrue(cond.isValid());
+
+        List<User> users = searchDAO.search(cond, AnyTypeKind.USER);
+        assertNotNull(users);
+        assertEquals(4, users.size());
     }
 }

@@ -21,14 +21,13 @@ package org.apache.syncope.core.logic;
 import java.lang.reflect.Method;
 import java.util.List;
 import org.apache.commons.lang3.tuple.Pair;
-import org.apache.syncope.common.lib.patch.UserPatch;
+import org.apache.syncope.common.lib.request.UserUR;
 import org.apache.syncope.common.lib.to.EntityTO;
-import org.apache.syncope.common.lib.to.PropagationTaskTO;
 import org.apache.syncope.common.lib.to.UserTO;
 import org.apache.syncope.common.lib.to.WorkflowTask;
 import org.apache.syncope.common.lib.to.WorkflowTaskExecInput;
 import org.apache.syncope.common.lib.types.FlowableEntitlement;
-import org.apache.syncope.common.lib.types.StandardEntitlement;
+import org.apache.syncope.common.lib.types.IdRepoEntitlement;
 import org.apache.syncope.core.persistence.api.dao.UserDAO;
 import org.apache.syncope.core.persistence.api.entity.user.User;
 import org.apache.syncope.core.provisioning.api.propagation.PropagationManager;
@@ -36,7 +35,9 @@ import org.apache.syncope.core.provisioning.api.propagation.PropagationTaskExecu
 import org.apache.syncope.core.provisioning.api.WorkflowResult;
 import org.apache.syncope.core.provisioning.api.data.UserDataBinder;
 import org.apache.syncope.core.flowable.api.WorkflowTaskManager;
+import org.apache.syncope.core.provisioning.api.propagation.PropagationTaskInfo;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Component;
 
@@ -44,6 +45,7 @@ import org.springframework.stereotype.Component;
 public class UserWorkflowTaskLogic extends AbstractTransactionalLogic<EntityTO> {
 
     @Autowired
+    @Lazy
     private WorkflowTaskManager wfTaskManager;
 
     @Autowired
@@ -59,25 +61,23 @@ public class UserWorkflowTaskLogic extends AbstractTransactionalLogic<EntityTO> 
     private UserDAO userDAO;
 
     @PreAuthorize("hasRole('" + FlowableEntitlement.WORKFLOW_TASK_LIST + "') "
-            + "and hasRole('" + StandardEntitlement.USER_READ + "')")
+            + "and hasRole('" + IdRepoEntitlement.USER_READ + "')")
     public List<WorkflowTask> getAvailableTasks(final String key) {
         User user = userDAO.authFind(key);
         return wfTaskManager.getAvailableTasks(user.getKey());
     }
 
-    @PreAuthorize("hasRole('" + StandardEntitlement.USER_UPDATE + "')")
+    @PreAuthorize("hasRole('" + IdRepoEntitlement.USER_UPDATE + "')")
     public UserTO executeNextTask(final WorkflowTaskExecInput workflowTaskExecInput) {
         WorkflowResult<String> updated = wfTaskManager.executeNextTask(workflowTaskExecInput);
 
-        UserPatch userPatch = new UserPatch();
-        userPatch.setKey(updated.getResult());
+        UserUR userUR = new UserUR.Builder(updated.getResult()).build();
 
-        List<PropagationTaskTO> tasks = propagationManager.getUserUpdateTasks(
-                new WorkflowResult<>(
-                        Pair.<UserPatch, Boolean>of(userPatch, null),
-                        updated.getPropByRes(), updated.getPerformedTasks()));
+        List<PropagationTaskInfo> taskInfos = propagationManager.getUserUpdateTasks(new WorkflowResult<>(
+                Pair.<UserUR, Boolean>of(userUR, null),
+                updated.getPropByRes(), updated.getPerformedTasks()));
 
-        taskExecutor.execute(tasks, false);
+        taskExecutor.execute(taskInfos, false);
 
         return binder.getUserTO(updated.getResult());
     }

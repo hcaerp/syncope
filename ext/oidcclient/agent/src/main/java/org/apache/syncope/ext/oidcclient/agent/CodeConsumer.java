@@ -24,28 +24,40 @@ import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import javax.servlet.ServletException;
-import javax.servlet.annotation.WebServlet;
-import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.syncope.client.lib.SyncopeClient;
+import org.apache.syncope.common.lib.Attr;
 import org.apache.syncope.common.lib.OIDCConstants;
-import org.apache.syncope.common.lib.to.AttrTO;
 import org.apache.syncope.common.lib.to.OIDCLoginResponseTO;
 import org.apache.syncope.common.rest.api.service.OIDCClientService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationContext;
 
-@WebServlet(name = "codeConsumer", urlPatterns = { "/oidcclient/code-consumer" })
-public class CodeConsumer extends HttpServlet {
+public class CodeConsumer extends AbstractOIDCClientServlet {
 
     private static final long serialVersionUID = 968480296813639041L;
 
-    protected static final Logger LOG = LoggerFactory.getLogger(CodeConsumer.class);
-
     private static final ObjectMapper MAPPER =
             new ObjectMapper().setSerializationInclusion(JsonInclude.Include.NON_EMPTY);
+
+    private final String anonymousUser;
+
+    private final String anonymousKey;
+
+    private final boolean useGZIPCompression;
+
+    public CodeConsumer(
+            final ApplicationContext ctx,
+            final String anonymousUser,
+            final String anonymousKey,
+            final boolean useGZIPCompression) {
+
+        super(ctx);
+        this.anonymousUser = anonymousUser;
+        this.anonymousKey = anonymousKey;
+        this.useGZIPCompression = useGZIPCompression;
+    }
 
     @Override
     protected void doGet(final HttpServletRequest request, final HttpServletResponse response)
@@ -58,16 +70,15 @@ public class CodeConsumer extends HttpServlet {
                 throw new IllegalArgumentException("Empty " + OIDCConstants.CODE + " or " + OIDCConstants.STATE);
             }
             if (state.equals(request.getSession().getAttribute(OIDCConstants.STATE).toString())) {
-                SyncopeClient anonymous = (SyncopeClient) request.getServletContext().
-                        getAttribute(Constants.SYNCOPE_ANONYMOUS_CLIENT);
+                SyncopeClient anonymous = getAnonymousClient(
+                        request.getServletContext(), anonymousUser, anonymousKey, useGZIPCompression);
 
                 OIDCLoginResponseTO responseTO = anonymous.getService(OIDCClientService.class).login(
                         request.getRequestURL().toString(),
                         authorizationCode,
                         request.getSession().getAttribute(OIDCConstants.OP).toString());
                 if (responseTO.isSelfReg()) {
-                    responseTO.getAttrs().add(
-                            new AttrTO.Builder().schema("username").values(responseTO.getUsername()).build());
+                    responseTO.getAttrs().add(new Attr.Builder("username").values(responseTO.getUsername()).build());
                     request.getSession(true).
                             setAttribute(Constants.OIDCCLIENT_USER_ATTRS, MAPPER.writeValueAsString(responseTO.
                                     getAttrs()));
@@ -108,7 +119,7 @@ public class CodeConsumer extends HttpServlet {
                 e.printStackTrace(response.getWriter());
             } else {
                 response.sendRedirect(errorURL + "?errorMessage="
-                        + URLEncoder.encode(e.getMessage(), StandardCharsets.UTF_8.name()));
+                        + URLEncoder.encode(e.getMessage(), StandardCharsets.UTF_8));
             }
         }
     }

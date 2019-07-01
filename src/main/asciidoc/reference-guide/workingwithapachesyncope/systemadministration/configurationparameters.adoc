@@ -19,22 +19,29 @@
 
 ==== Configuration Parameters
 
-Most run-time configuration options are available as parameters and can be tuned either via the admin console, CLI or
+Most run-time configuration options are available as parameters and can be tuned either via the admin console or
 barely invoking the REST layer through http://curl.haxx.se/[curl^]:
 
 * `password.cipher.algorithm` - which cipher algorithm shall be used for encrypting password values; supported 
 algorithms include `SHA-1`, `SHA-256`, `SHA-512`, `AES`, `S-MD5`, `S-SHA-1`, `S-SHA-256`, `S-SHA-512` and `BCRYPT`;
 salting options are available in the `security.properties` file;
+[WARNING]
+The value of the `secretKey` property in the `security.properties` file is used for AES-based encryption / decription.
+Besides password values, this is also used whenever reversible encryption is needed, throughout the whole system. +
+When the `secretKey` value has length less than 16, it is right-padded by random characters during startup, to reach
+such mininum value. +
+It is *strongly* recommended to provide a value long at least 16 characters, in order to avoid unexpected behaviors
+at runtime, expecially with high-availability. 
 * `jwt.lifetime.minutes` - validity of https://en.wikipedia.org/wiki/JSON_Web_Token[JSON Web Token^] values used for
 <<rest-authentication-and-authorization,authentication>> (in minutes);
 * `notificationjob.cronExpression` -
 http://www.quartz-scheduler.org/documentation/quartz-2.2.x/tutorials/crontrigger.html[cron^] expression describing how
 frequently the pending <<tasks-notification,notification tasks>> are processed: empty means disabled;
 [NOTE]
-Restarting the Java EE container is required when changing value for this parameter.
+Restarting the deployment is required when changing value for this parameter.
 * `notification.maxRetries` - how many times the delivery of a given notification should be attempted before giving up;
 [NOTE]
-Restarting the Java EE container is required when changing value for this parameter.
+Restarting the deployment is required when changing value for this parameter.
 * `token.length` - the length of the random tokens that can be generated as part of various <<workflow,workflow>>
 processes, including <<password-reset,password reset>>;
 * `token.expireTime` - the time after which the generated random tokens expire;

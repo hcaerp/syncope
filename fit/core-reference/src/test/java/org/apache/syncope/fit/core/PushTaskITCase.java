@@ -29,10 +29,10 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import javax.sql.DataSource;
 import javax.ws.rs.core.Response;
 import org.apache.syncope.client.lib.SyncopeClient;
 import org.apache.syncope.common.lib.SyncopeConstants;
+import org.apache.syncope.common.lib.request.GroupCR;
 import org.apache.syncope.common.lib.to.AnyTypeClassTO;
 import org.apache.syncope.common.lib.to.PagedResult;
 import org.apache.syncope.common.lib.to.PushTaskTO;
@@ -48,10 +48,10 @@ import org.apache.syncope.common.lib.to.ReconStatus;
 import org.apache.syncope.common.lib.to.ResourceTO;
 import org.apache.syncope.common.lib.types.AnyTypeKind;
 import org.apache.syncope.common.lib.types.AttrSchemaType;
-import org.apache.syncope.common.lib.types.ImplementationType;
 import org.apache.syncope.common.lib.types.MappingPurpose;
 import org.apache.syncope.common.lib.types.MatchingRule;
 import org.apache.syncope.common.lib.types.ExecStatus;
+import org.apache.syncope.common.lib.types.IdMImplementationType;
 import org.apache.syncope.common.lib.types.SchemaType;
 import org.apache.syncope.common.lib.types.TaskType;
 import org.apache.syncope.common.lib.types.TraceLevel;
@@ -62,20 +62,14 @@ import org.apache.syncope.common.rest.api.service.ResourceService;
 import org.apache.syncope.common.rest.api.service.TaskService;
 import org.identityconnectors.framework.common.objects.ObjectClass;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 
-@SpringJUnitConfig(locations = { "classpath:testJDBCEnv.xml" })
 public class PushTaskITCase extends AbstractTaskITCase {
-
-    @Autowired
-    private DataSource testDataSource;
 
     @Test
     public void getPushActionsClasses() {
         Set<String> actions = syncopeService.platform().
-                getJavaImplInfo(ImplementationType.PUSH_ACTIONS).get().getClasses();
+                getJavaImplInfo(IdMImplementationType.PUSH_ACTIONS).get().getClasses();
         assertNotNull(actions);
     }
 
@@ -365,14 +359,14 @@ public class PushTaskITCase extends AbstractTaskITCase {
         anyTypeClassService.create(typeClass);
 
         // create a new sample group
-        GroupTO groupTO = new GroupTO();
-        groupTO.setName("all" + getUUIDString());
-        groupTO.setRealm("/even");
-        groupTO.getAuxClasses().add(typeClass.getKey());
+        GroupCR groupCR = new GroupCR();
+        groupCR.setName("all" + getUUIDString());
+        groupCR.setRealm("/even");
+        groupCR.getAuxClasses().add(typeClass.getKey());
 
-        groupTO.getPlainAttrs().add(attrTO(schemaTO.getKey(), "all"));
+        groupCR.getPlainAttrs().add(attr(schemaTO.getKey(), "all"));
 
-        groupTO = createGroup(groupTO).getEntity();
+        GroupTO groupTO = createGroup(groupCR).getEntity();
         assertNotNull(groupTO);
 
         String resourceName = "resource-ldap-grouponly";

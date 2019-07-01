@@ -18,8 +18,8 @@
  */
 package org.apache.syncope.core.workflow.java;
 
-import org.apache.syncope.common.lib.patch.AnyObjectPatch;
-import org.apache.syncope.common.lib.to.AnyObjectTO;
+import org.apache.syncope.common.lib.request.AnyObjectCR;
+import org.apache.syncope.common.lib.request.AnyObjectUR;
 import org.apache.syncope.core.persistence.api.dao.AnyObjectDAO;
 import org.apache.syncope.core.persistence.api.entity.EntityFactory;
 import org.apache.syncope.core.persistence.api.entity.anyobject.AnyObject;
@@ -47,22 +47,21 @@ public abstract class AbstractAnyObjectWorkflowAdapter implements AnyObjectWorkf
         return null;
     }
 
-    protected abstract WorkflowResult<String> doCreate(AnyObjectTO anyObjectTO);
+    protected abstract WorkflowResult<String> doCreate(AnyObjectCR anyObjectCR);
 
     @Override
-    public WorkflowResult<String> create(final AnyObjectTO anyObjectTO) {
-        return doCreate(anyObjectTO);
+    public WorkflowResult<String> create(final AnyObjectCR anyObjectCR) {
+        return doCreate(anyObjectCR);
     }
 
-    protected abstract WorkflowResult<AnyObjectPatch> doUpdate(AnyObject anyObject, AnyObjectPatch anyObjectPatch);
+    protected abstract WorkflowResult<AnyObjectUR> doUpdate(AnyObject anyObject, AnyObjectUR anyObjectUR);
 
     @Override
-    public WorkflowResult<AnyObjectPatch> update(final AnyObjectPatch anyObjectPatch) {
-        WorkflowResult<AnyObjectPatch> result =
-                doUpdate(anyObjectDAO.authFind(anyObjectPatch.getKey()), anyObjectPatch);
+    public WorkflowResult<AnyObjectUR> update(final AnyObjectUR anyObjectUR) {
+        WorkflowResult<AnyObjectUR> result = doUpdate(anyObjectDAO.authFind(anyObjectUR.getKey()), anyObjectUR);
 
         // re-read to ensure that requester's administration rights are still valid
-        anyObjectDAO.authFind(anyObjectPatch.getKey());
+        anyObjectDAO.authFind(anyObjectUR.getKey());
 
         return result;
     }

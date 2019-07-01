@@ -26,8 +26,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import javax.ws.rs.core.Response;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
+import org.apache.cxf.jaxrs.client.WebClient;
 import org.apache.syncope.client.lib.SyncopeClient;
-import org.apache.syncope.common.lib.to.AttrTO;
+import org.apache.syncope.common.lib.request.GroupCR;
+import org.apache.syncope.common.lib.SyncopeConstants;
 import org.apache.syncope.common.lib.to.NotificationTaskTO;
 import org.apache.syncope.common.lib.to.ExecTO;
 import org.apache.syncope.common.lib.to.GroupTO;
@@ -35,8 +37,8 @@ import org.apache.syncope.common.lib.to.ImplementationTO;
 import org.apache.syncope.common.lib.to.NotificationTO;
 import org.apache.syncope.common.lib.to.PagedResult;
 import org.apache.syncope.common.lib.types.AnyTypeKind;
+import org.apache.syncope.common.lib.types.IdRepoImplementationType;
 import org.apache.syncope.common.lib.types.ImplementationEngine;
-import org.apache.syncope.common.lib.types.ImplementationType;
 import org.apache.syncope.common.lib.types.TaskType;
 import org.apache.syncope.common.lib.types.TraceLevel;
 import org.apache.syncope.common.rest.api.RESTHeaders;
@@ -61,7 +63,7 @@ public class NotificationTaskITCase extends AbstractNotificationTaskITCase {
 
         execNotificationTask(taskService, taskTO.getKey(), 50);
 
-        assertTrue(verifyMail(sender, subject, created.getRight()));
+        assertTrue(verifyMail(sender, subject, created.getRight(), 50));
 
         // verify message body
         taskTO = taskService.read(TaskType.NOTIFICATION, taskTO.getKey(), true);
@@ -84,18 +86,19 @@ public class NotificationTaskITCase extends AbstractNotificationTaskITCase {
 
         execNotificationTask(taskService, taskTO.getKey(), 50);
 
-        assertTrue(verifyMail(sender, subject, created.getRight()));
+        assertTrue(verifyMail(sender, subject, created.getRight(), 50));
     }
 
     @Test
     public void notifyByMailWithRetry() throws Exception {
         // 1. Set higher number of retries
-        AttrTO origMaxRetries = configurationService.get("notification.maxRetries");
+        Long origMaxRetries = confParamOps.get(SyncopeConstants.MASTER_DOMAIN,
+                "notification.maxRetries", null, Long.class);
 
-        configurationService.set(attrTO(origMaxRetries.getSchema(), "10"));
+        confParamOps.set(SyncopeConstants.MASTER_DOMAIN, "notification.maxRetries", 10);
 
         // 2. Stop mail server to force errors while sending out e-mails
-        stopGreenMail();
+        WebClient.create(BUILD_TOOLS_ADDRESS + "/rest/greenMail/stop").post(null);
 
         try {
             // 3. create notification and user
@@ -121,9 +124,9 @@ public class NotificationTaskITCase extends AbstractNotificationTaskITCase {
             }
         } finally {
             // start mail server again
-            startGreenMail();
+            WebClient.create(BUILD_TOOLS_ADDRESS + "/rest/greenMail/start").post(null);
             // reset number of retries
-            configurationService.set(origMaxRetries);
+            confParamOps.set(SyncopeConstants.MASTER_DOMAIN, "notification.maxRetries", origMaxRetries);
         }
     }
 
@@ -192,7 +195,7 @@ public class NotificationTaskITCase extends AbstractNotificationTaskITCase {
         } catch (InterruptedException e) {
         }
 
-        assertTrue(verifyMail(sender, subject, created.getRight()));
+        assertTrue(verifyMail(sender, subject, created.getRight(), 50));
 
         // verify that last exec status was updated
         taskTO = taskService.read(TaskType.NOTIFICATION, taskTO.getKey(), true);
@@ -215,7 +218,7 @@ public class NotificationTaskITCase extends AbstractNotificationTaskITCase {
 
         execNotificationTask(taskService, taskTO.getKey(), 50);
 
-        assertTrue(verifyMail(sender, subject, created.getRight()));
+        assertTrue(verifyMail(sender, subject, created.getRight(), 50));
 
         // verify task
         taskTO = taskService.read(TaskType.NOTIFICATION, taskTO.getKey(), true);
@@ -230,7 +233,7 @@ public class NotificationTaskITCase extends AbstractNotificationTaskITCase {
         ImplementationTO recipientsProvider = new ImplementationTO();
         recipientsProvider.setKey(TestNotificationRecipientsProvider.class.getSimpleName());
         recipientsProvider.setEngine(ImplementationEngine.JAVA);
-        recipientsProvider.setType(ImplementationType.RECIPIENTS_PROVIDER);
+        recipientsProvider.setType(IdRepoImplementationType.RECIPIENTS_PROVIDER);
         recipientsProvider.setBody(TestNotificationRecipientsProvider.class.getName());
         Response response = implementationService.create(recipientsProvider);
         recipientsProvider = implementationService.read(
@@ -265,10 +268,10 @@ public class NotificationTaskITCase extends AbstractNotificationTaskITCase {
         assertEquals(recipientsProvider.getKey(), notification.getRecipientsProvider());
 
         // 2. create group
-        GroupTO groupTO = new GroupTO();
-        groupTO.setName(groupName);
-        groupTO.setRealm("/even/two");
-        groupTO = createGroup(groupTO).getEntity();
+        GroupCR groupCR = new GroupCR();
+        groupCR.setName(groupName);
+        groupCR.setRealm("/even/two");
+        GroupTO groupTO = createGroup(groupCR).getEntity();
         assertNotNull(groupTO);
 
         // 3. verify
@@ -285,7 +288,7 @@ public class NotificationTaskITCase extends AbstractNotificationTaskITCase {
 
         execNotificationTask(taskService, taskTO.getKey(), 50);
 
-        assertTrue(verifyMail(sender, subject, "notificationtest@syncope.apache.org"));
+        assertTrue(verifyMail(sender, subject, "notificationtest@syncope.apache.org", 50));
     }
 
     @Test

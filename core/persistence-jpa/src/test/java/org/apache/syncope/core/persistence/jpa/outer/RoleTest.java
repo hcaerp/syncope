@@ -30,7 +30,7 @@ import java.util.HashSet;
 import java.util.List;
 import javax.persistence.Query;
 import org.apache.syncope.common.lib.types.AnyTypeKind;
-import org.apache.syncope.common.lib.types.StandardEntitlement;
+import org.apache.syncope.common.lib.types.IdRepoEntitlement;
 import org.apache.syncope.core.persistence.api.dao.AnyTypeClassDAO;
 import org.apache.syncope.core.persistence.api.dao.PlainSchemaDAO;
 import org.apache.syncope.core.persistence.api.dao.RealmDAO;
@@ -112,8 +112,8 @@ public class RoleTest extends AbstractTest {
         role.setKey("new");
         role.add(realmDAO.getRoot());
         role.add(realmDAO.findByFullPath("/even/two"));
-        role.getEntitlements().add(StandardEntitlement.LOG_LIST);
-        role.getEntitlements().add(StandardEntitlement.LOG_SET_LEVEL);
+        role.getEntitlements().add(IdRepoEntitlement.LOG_LIST);
+        role.getEntitlements().add(IdRepoEntitlement.LOG_SET_LEVEL);
 
         DynRoleMembership dynMembership = entityFactory.newEntity(DynRoleMembership.class);
         dynMembership.setFIQLCond("cool==true");
@@ -124,7 +124,7 @@ public class RoleTest extends AbstractTest {
         Role actual = roleDAO.saveAndRefreshDynMemberships(role);
         assertNotNull(actual);
 
-        roleDAO.flush();
+        entityManager().flush();
 
         // 2. verify that dynamic membership is there
         actual = roleDAO.find(actual.getKey());
@@ -149,7 +149,7 @@ public class RoleTest extends AbstractTest {
         // 4. delete the new user and verify that dynamic membership was updated
         userDAO.delete(newUserKey);
 
-        userDAO.flush();
+        entityManager().flush();
 
         actual = roleDAO.find(actual.getKey());
         members = roleDAO.findDynMembers(actual);
@@ -161,7 +161,7 @@ public class RoleTest extends AbstractTest {
 
         roleDAO.delete(actual);
 
-        roleDAO.flush();
+        entityManager().flush();
 
         assertNull(entityManager().find(JPADynRoleMembership.class, dynMembershipKey));
 
@@ -176,8 +176,8 @@ public class RoleTest extends AbstractTest {
         role.setKey("new");
         role.add(realmDAO.getRoot());
         role.add(realmDAO.findByFullPath("/even/two"));
-        role.getEntitlements().add(StandardEntitlement.LOG_LIST);
-        role.getEntitlements().add(StandardEntitlement.LOG_SET_LEVEL);
+        role.getEntitlements().add(IdRepoEntitlement.LOG_LIST);
+        role.getEntitlements().add(IdRepoEntitlement.LOG_SET_LEVEL);
 
         role = roleDAO.save(role);
         assertNotNull(role);
@@ -194,7 +194,7 @@ public class RoleTest extends AbstractTest {
         // 2. remove role
         roleDAO.delete(role);
 
-        userDAO.flush();
+        entityManager().flush();
 
         // 3. verify that role was removed from user
         user = userDAO.find(user.getKey());

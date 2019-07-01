@@ -23,7 +23,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import javax.persistence.TypedQuery;
-import org.apache.syncope.common.lib.types.StandardEntitlement;
+import org.apache.syncope.common.lib.types.IdMEntitlement;
 import org.apache.syncope.core.persistence.api.dao.ConnInstanceDAO;
 import org.apache.syncope.core.persistence.api.dao.ConnInstanceHistoryConfDAO;
 import org.apache.syncope.core.persistence.api.dao.ExternalResourceDAO;
@@ -35,6 +35,7 @@ import org.apache.syncope.core.provisioning.api.ConnectorRegistry;
 import org.apache.syncope.core.spring.security.AuthContextUtils;
 import org.apache.syncope.core.spring.security.DelegatedAdministrationException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Repository;
 
 @Repository
@@ -44,6 +45,7 @@ public class JPAConnInstanceDAO extends AbstractDAO<ConnInstance> implements Con
     private ConnInstanceHistoryConfDAO connInstanceHistoryConfDAO;
 
     @Autowired
+    @Lazy
     private ExternalResourceDAO resourceDAO;
 
     @Autowired
@@ -61,7 +63,7 @@ public class JPAConnInstanceDAO extends AbstractDAO<ConnInstance> implements Con
             return null;
         }
 
-        Set<String> authRealms = AuthContextUtils.getAuthorizations().get(StandardEntitlement.CONNECTOR_READ);
+        Set<String> authRealms = AuthContextUtils.getAuthorizations().get(IdMEntitlement.CONNECTOR_READ);
         if (authRealms == null || authRealms.isEmpty()
                 || !authRealms.stream().anyMatch(
                         realm -> connInstance.getAdminRealm().getFullPath().startsWith(realm))) {
@@ -77,7 +79,7 @@ public class JPAConnInstanceDAO extends AbstractDAO<ConnInstance> implements Con
 
     @Override
     public List<ConnInstance> findAll() {
-        final Set<String> authRealms = AuthContextUtils.getAuthorizations().get(StandardEntitlement.CONNECTOR_LIST);
+        final Set<String> authRealms = AuthContextUtils.getAuthorizations().get(IdMEntitlement.CONNECTOR_LIST);
         if (authRealms == null || authRealms.isEmpty()) {
             return Collections.emptyList();
         }

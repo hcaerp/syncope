@@ -25,6 +25,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.util.List;
 import org.apache.syncope.common.lib.SyncopeConstants;
+import org.apache.syncope.common.lib.request.UserCR;
 import org.apache.syncope.common.lib.to.AnyTypeClassTO;
 import org.apache.syncope.common.lib.to.CamelRouteTO;
 import org.apache.syncope.common.lib.to.PlainSchemaTO;
@@ -40,7 +41,7 @@ public class CamelRouteITCase extends AbstractITCase {
 
     @BeforeEach
     public void check() {
-        assumeTrue(syncopeService.platform().getUserProvisioningManager().contains("Camel"));
+        assumeTrue(syncopeService.platform().getProvisioningInfo().getUserProvisioningManager().contains("Camel"));
     }
 
     @Test
@@ -77,8 +78,8 @@ public class CamelRouteITCase extends AbstractITCase {
                 + "    <simple>${body}</simple>\n"
                 + "  </setProperty>\n"
                 + "  <doTry>\n"
-                + "    <bean ref=\"uwfAdapter\" method=\"create(${body},${property.disablePwdPolicyCheck},\n"
-                + "                             ${property.enabled},${property.storePassword})\"/>\n"
+                + "    <bean ref=\"uwfAdapter\" method=\"create(${body},${exchangeProperty.disablePwdPolicyCheck},\n"
+                + "                             ${exchangeProperty.enabled})\"/>\n"
                 + "    <to uri=\"propagate:create?anyTypeKind=USER\"/>\n"
                 + "    <to uri=\"direct:createPort\"/>\n"
                 + "    <to uri=\"log:myLog\"/>\n"
@@ -117,8 +118,8 @@ public class CamelRouteITCase extends AbstractITCase {
                 + "     </groovy>\n"
                 + "    </setBody>\n"
                 + "    <doTry>\n"
-                + "      <bean ref=\"uwfAdapter\" method=\"create(${body},${property.disablePwdPolicyCheck},\n"
-                + "                                     ${property.enabled},${property.storePassword})\"/>\n"
+                + "      <bean ref=\"uwfAdapter\" method=\"create(${body},${exchangeProperty.disablePwdPolicyCheck},\n"
+                + "                                     ${exchangeProperty.enabled})\"/>\n"
                 + "      <to uri=\"propagate:create?anyTypeKind=USER\"/>\n"
                 + "      <to uri=\"direct:createPort\"/>\n"
                 + "      <doCatch>        \n"
@@ -144,18 +145,18 @@ public class CamelRouteITCase extends AbstractITCase {
             typeClass.getPlainSchemas().add(schemaTO.getKey());
             anyTypeClassService.create(typeClass);
 
-            UserTO userTO = new UserTO();
-            userTO.setRealm(SyncopeConstants.ROOT_REALM);
-            userTO.getAuxClasses().add(typeClass.getKey());
+            UserCR userCR = new UserCR();
+            userCR.setRealm(SyncopeConstants.ROOT_REALM);
+            userCR.getAuxClasses().add(typeClass.getKey());
             String userId = getUUIDString() + "camelUser@syncope.apache.org";
-            userTO.setUsername(userId);
-            userTO.setPassword("password123");
-            userTO.getPlainAttrs().add(attrTO("userId", userId));
-            userTO.getPlainAttrs().add(attrTO("fullname", userId));
-            userTO.getPlainAttrs().add(attrTO("surname", userId));
-            userTO.getPlainAttrs().add(attrTO("camelAttribute", "false"));
+            userCR.setUsername(userId);
+            userCR.setPassword("password123");
+            userCR.getPlainAttrs().add(attr("userId", userId));
+            userCR.getPlainAttrs().add(attr("fullname", userId));
+            userCR.getPlainAttrs().add(attr("surname", userId));
+            userCR.getPlainAttrs().add(attr("camelAttribute", "false"));
 
-            userTO = createUser(userTO).getEntity();
+            UserTO userTO = createUser(userCR).getEntity();
             assertNotNull(userTO);
             assertEquals("true", userTO.getPlainAttr("camelAttribute").get().getValues().get(0));
         } finally {
@@ -173,8 +174,8 @@ public class CamelRouteITCase extends AbstractITCase {
                 + "    <simple>${body}</simple>\n"
                 + "  </setProperty>\n"
                 + "  <doTry>\n"
-                + "    <bean ref=\"uwfAdapter\" method=\"create(${body},${property.disablePwdPolicyCheck},\n"
-                + "                             ${property.enabled},${property.storePassword})\"/>\n"
+                + "    <bean ref=\"uwfAdapter\" method=\"create(${body},${exchangeProperty.disablePwdPolicyCheck},\n"
+                + "                             ${exchangeProperty.enabled})\"/>\n"
                 + "    <to uri=\"propagate:create123?anyTypeKind=USER\"/>\n"
                 + "    <to uri=\"direct:createPort\"/>\n"
                 + "    <to uri=\"log:myLog\"/>\n"

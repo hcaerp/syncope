@@ -18,10 +18,12 @@
  */
 package org.apache.syncope.fit.buildtools;
 
+import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import javax.servlet.ServletContext;
 import javax.servlet.ServletContextEvent;
 import javax.servlet.ServletContextListener;
+import javax.servlet.annotation.WebListener;
 import javax.sql.DataSource;
 import org.h2.tools.Server;
 import org.slf4j.Logger;
@@ -34,6 +36,7 @@ import org.springframework.web.context.support.WebApplicationContextUtils;
 /**
  * Utility servlet context listener managing H2 test server instance (to be used as external resource).
  */
+@WebListener
 public class H2StartStopListener implements ServletContextListener {
 
     private static final Logger LOG = LoggerFactory.getLogger(H2StartStopListener.class);
@@ -47,31 +50,34 @@ public class H2StartStopListener implements ServletContextListener {
 
         try {
             Server h2TestDb = new Server();
-            h2TestDb.runTool("-tcp", "-tcpDaemon", "-web", "-webDaemon",
-                    "-webPort", ctx.getBean("testdb.webport", String.class));
+            h2TestDb.runTool("-ifNotExists", "-tcp", "-tcpDaemon", "-web", "-webDaemon",
+                    "-webPort", ctx.getEnvironment().getProperty("testdb.webport"));
 
             context.setAttribute(H2_TESTDB, h2TestDb);
         } catch (SQLException e) {
             LOG.error("Could not start H2 test db", e);
         }
 
-        DataSource datasource = ctx.getBean(DataSource.class);
+        DataSource datasource = ctx.getBean("testDataSource", DataSource.class);
 
-        ResourceDatabasePopulator populator = new ResourceDatabasePopulator(ctx.getResource("classpath:/testdb.sql"));
-        populator.setSqlScriptEncoding("UTF-8");
-        DataSourceInitializer init = new DataSourceInitializer();
-        init.setDataSource(datasource);
-        init.setEnabled(true);
-        init.setDatabasePopulator(populator);
-        init.afterPropertiesSet();
-        LOG.info("Database successfully initialized");
+        try {
+            ResourceDatabasePopulator populator =
+                    new ResourceDatabasePopulator(ctx.getResource("classpath:/testdb.sql"));
+            populator.setSqlScriptEncoding(StandardCharsets.UTF_8.name());
+            DataSourceInitializer init = new DataSourceInitializer();
+            init.setDataSource(datasource);
+            init.setEnabled(true);
+            init.setDatabasePopulator(populator);
+            init.afterPropertiesSet();
+            LOG.info("H2 database successfully initialized");
+        } catch (Exception e) {
+            LOG.error("Could not initialize H2", e);
+        }
     }
 
     @Override
     public void contextDestroyed(final ServletContextEvent sce) {
-        final ServletContext context = sce.getServletContext();
-
-        final Server h2TestDb = (Server) context.getAttribute(H2_TESTDB);
+        Server h2TestDb = (Server) sce.getServletContext().getAttribute(H2_TESTDB);
         if (h2TestDb != null) {
             h2TestDb.shutdown();
         }

@@ -22,8 +22,10 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import org.apache.commons.lang3.tuple.Pair;
-import org.apache.syncope.common.lib.patch.AnyObjectPatch;
-import org.apache.syncope.common.lib.patch.AnyPatch;
+import org.apache.syncope.common.lib.request.AnyCR;
+import org.apache.syncope.common.lib.request.AnyObjectCR;
+import org.apache.syncope.common.lib.request.AnyObjectUR;
+import org.apache.syncope.common.lib.request.AnyUR;
 import org.apache.syncope.common.lib.to.AnyTO;
 import org.apache.syncope.common.lib.to.PropagationStatus;
 import org.apache.syncope.common.lib.to.AnyObjectTO;
@@ -53,7 +55,12 @@ public class DefaultAnyObjectPullResultHandler extends AbstractPullResultHandler
     }
 
     @Override
-    protected ProvisioningManager<?, ?> getProvisioningManager() {
+    protected String getName(final AnyCR anyCR) {
+        return AnyObjectCR.class.cast(anyCR).getName();
+    }
+
+    @Override
+    protected ProvisioningManager<?, ?, ?> getProvisioningManager() {
         return anyObjectProvisioningManager;
     }
 
@@ -63,32 +70,32 @@ public class DefaultAnyObjectPullResultHandler extends AbstractPullResultHandler
     }
 
     @Override
-    protected WorkflowResult<? extends AnyPatch> update(final AnyPatch patch) {
-        return awfAdapter.update((AnyObjectPatch) patch);
+    protected WorkflowResult<? extends AnyUR> update(final AnyUR req) {
+        return awfAdapter.update((AnyObjectUR) req);
     }
 
     @Override
-    protected AnyTO doCreate(final AnyTO anyTO, final SyncDelta delta) {
-        AnyObjectTO anyObjectTO = AnyObjectTO.class.cast(anyTO);
+    protected AnyTO doCreate(final AnyCR anyCR, final SyncDelta delta) {
+        AnyObjectCR anyObjectCR = AnyObjectCR.class.cast(anyCR);
 
         Map.Entry<String, List<PropagationStatus>> created = anyObjectProvisioningManager.create(
-                anyObjectTO, Collections.singleton(profile.getTask().getResource().getKey()), true);
+                anyObjectCR, Collections.singleton(profile.getTask().getResource().getKey()), true);
 
         return getAnyTO(created.getKey());
     }
 
     @Override
-    protected AnyPatch doUpdate(
+    protected AnyUR doUpdate(
             final AnyTO before,
-            final AnyPatch anyPatch,
+            final AnyUR req,
             final SyncDelta delta,
             final ProvisioningReport result) {
 
-        AnyObjectPatch anyObjectPatch = AnyObjectPatch.class.cast(anyPatch);
+        AnyObjectUR anyObjectUR = AnyObjectUR.class.cast(req);
 
-        Pair<AnyObjectPatch, List<PropagationStatus>> updated = anyObjectProvisioningManager.update(
-                anyObjectPatch, Collections.singleton(profile.getTask().getResource().getKey()), true);
+        Pair<AnyObjectUR, List<PropagationStatus>> updated = anyObjectProvisioningManager.update(
+                anyObjectUR, Collections.singleton(profile.getTask().getResource().getKey()), true);
 
-        return anyPatch;
+        return updated.getLeft();
     }
 }

@@ -30,7 +30,8 @@ import javax.persistence.JoinTable;
 import javax.persistence.ManyToMany;
 import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
-import org.apache.syncope.common.lib.types.ImplementationType;
+import org.apache.syncope.common.lib.types.IdMImplementationType;
+import javax.persistence.UniqueConstraint;
 import org.apache.syncope.core.persistence.api.entity.AnyType;
 import org.apache.syncope.core.persistence.api.entity.Implementation;
 import org.apache.syncope.core.persistence.api.entity.Realm;
@@ -53,7 +54,9 @@ public class JPAPushTask extends AbstractProvisioningTask implements PushTask {
             joinColumns =
             @JoinColumn(name = "task_id"),
             inverseJoinColumns =
-            @JoinColumn(name = "implementation_id"))
+            @JoinColumn(name = "implementation_id"),
+            uniqueConstraints =
+            @UniqueConstraint(columnNames = { "task_id", "implementation_id" }))
     private List<JPAImplementation> actions = new ArrayList<>();
 
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER, mappedBy = "pushTask")
@@ -73,7 +76,7 @@ public class JPAPushTask extends AbstractProvisioningTask implements PushTask {
     @Override
     public boolean add(final Implementation action) {
         checkType(action, JPAImplementation.class);
-        checkImplementationType(action, ImplementationType.PUSH_ACTIONS);
+        checkImplementationType(action, IdMImplementationType.PUSH_ACTIONS);
         return actions.contains((JPAImplementation) action) || actions.add((JPAImplementation) action);
     }
 

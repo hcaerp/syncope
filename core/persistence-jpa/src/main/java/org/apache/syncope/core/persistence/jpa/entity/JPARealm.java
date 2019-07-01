@@ -36,7 +36,7 @@ import javax.persistence.UniqueConstraint;
 import javax.validation.constraints.Size;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.syncope.common.lib.SyncopeConstants;
-import org.apache.syncope.common.lib.types.ImplementationType;
+import org.apache.syncope.common.lib.types.IdRepoImplementationType;
 import org.apache.syncope.core.persistence.api.entity.AnyTemplateRealm;
 import org.apache.syncope.core.persistence.api.entity.AnyType;
 import org.apache.syncope.core.persistence.api.entity.Implementation;
@@ -77,7 +77,9 @@ public class JPARealm extends AbstractGeneratedKeyEntity implements Realm {
             joinColumns =
             @JoinColumn(name = "realm_id"),
             inverseJoinColumns =
-            @JoinColumn(name = "implementation_id"))
+            @JoinColumn(name = "implementation_id"),
+            uniqueConstraints =
+            @UniqueConstraint(columnNames = { "realm_id", "implementation_id" }))
     private List<JPAImplementation> actions = new ArrayList<>();
 
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER, mappedBy = "realm")
@@ -87,7 +89,8 @@ public class JPARealm extends AbstractGeneratedKeyEntity implements Realm {
     @JoinTable(joinColumns =
             @JoinColumn(name = "realm_id"),
             inverseJoinColumns =
-            @JoinColumn(name = "resource_id"))
+            @JoinColumn(name = "resource_id"),
+            uniqueConstraints = @UniqueConstraint(columnNames = { "realm_id", "resource_id" }))
     private List<JPAExternalResource> resources = new ArrayList<>();
 
     @Override
@@ -143,7 +146,7 @@ public class JPARealm extends AbstractGeneratedKeyEntity implements Realm {
     @Override
     public boolean add(final Implementation action) {
         checkType(action, JPAImplementation.class);
-        checkImplementationType(action, ImplementationType.LOGIC_ACTIONS);
+        checkImplementationType(action, IdRepoImplementationType.LOGIC_ACTIONS);
         return actions.contains((JPAImplementation) action) || actions.add((JPAImplementation) action);
     }
 
@@ -173,7 +176,7 @@ public class JPARealm extends AbstractGeneratedKeyEntity implements Realm {
     @Override
     public boolean add(final ExternalResource resource) {
         checkType(resource, JPAExternalResource.class);
-        return resources.add((JPAExternalResource) resource);
+        return resources.contains((JPAExternalResource) resource) || resources.add((JPAExternalResource) resource);
     }
 
     @Override

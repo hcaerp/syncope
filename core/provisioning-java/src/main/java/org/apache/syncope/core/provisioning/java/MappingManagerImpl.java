@@ -35,7 +35,7 @@ import org.apache.commons.lang3.time.DateFormatUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.syncope.common.lib.to.AnyObjectTO;
 import org.apache.syncope.common.lib.to.AnyTO;
-import org.apache.syncope.common.lib.to.AttrTO;
+import org.apache.syncope.common.lib.Attr;
 import org.apache.syncope.common.lib.to.GroupTO;
 import org.apache.syncope.common.lib.to.GroupableRelatableTO;
 import org.apache.syncope.common.lib.to.MembershipTO;
@@ -46,13 +46,10 @@ import org.apache.syncope.common.lib.types.AttrSchemaType;
 import org.apache.syncope.core.persistence.api.dao.AnyObjectDAO;
 import org.apache.syncope.core.persistence.api.dao.AnyTypeDAO;
 import org.apache.syncope.core.persistence.api.dao.ApplicationDAO;
-import org.apache.syncope.core.persistence.api.dao.DerSchemaDAO;
 import org.apache.syncope.core.persistence.api.dao.GroupDAO;
-import org.apache.syncope.core.persistence.api.dao.PlainSchemaDAO;
 import org.apache.syncope.core.persistence.api.dao.RealmDAO;
 import org.apache.syncope.core.persistence.api.dao.RelationshipTypeDAO;
 import org.apache.syncope.core.persistence.api.dao.UserDAO;
-import org.apache.syncope.core.persistence.api.dao.VirSchemaDAO;
 import org.apache.syncope.core.persistence.api.entity.Any;
 import org.apache.syncope.core.persistence.api.entity.AnyType;
 import org.apache.syncope.core.persistence.api.entity.AnyUtils;
@@ -67,7 +64,6 @@ import org.apache.syncope.core.persistence.api.entity.PlainSchema;
 import org.apache.syncope.core.persistence.api.entity.Realm;
 import org.apache.syncope.core.persistence.api.entity.Relationship;
 import org.apache.syncope.core.persistence.api.entity.RelationshipType;
-import org.apache.syncope.core.persistence.api.entity.Schema;
 import org.apache.syncope.core.persistence.api.entity.VirSchema;
 import org.apache.syncope.core.persistence.api.entity.anyobject.AnyObject;
 import org.apache.syncope.core.persistence.api.entity.group.Group;
@@ -83,9 +79,9 @@ import org.apache.syncope.core.provisioning.api.IntAttrName;
 import org.apache.syncope.core.provisioning.api.MappingManager;
 import org.apache.syncope.core.provisioning.api.VirAttrHandler;
 import org.apache.syncope.core.provisioning.api.cache.VirAttrCache;
-import org.apache.syncope.core.provisioning.api.utils.policy.InvalidPasswordRuleConf;
 import org.apache.syncope.core.provisioning.java.utils.ConnObjectUtils;
 import org.apache.syncope.core.provisioning.java.utils.MappingUtils;
+import org.apache.syncope.core.spring.policy.InvalidPasswordRuleConf;
 import org.apache.syncope.core.spring.security.Encryptor;
 import org.apache.syncope.core.spring.security.PasswordGenerator;
 import org.identityconnectors.framework.common.FrameworkUtil;
@@ -110,15 +106,6 @@ public class MappingManagerImpl implements MappingManager {
 
     @Autowired
     private AnyTypeDAO anyTypeDAO;
-
-    @Autowired
-    private PlainSchemaDAO plainSchemaDAO;
-
-    @Autowired
-    private DerSchemaDAO derSchemaDAO;
-
-    @Autowired
-    private VirSchemaDAO virSchemaDAO;
 
     @Autowired
     private UserDAO userDAO;
@@ -319,36 +306,26 @@ public class MappingManagerImpl implements MappingManager {
             return null;
         }
 
-        boolean readOnlyVirSchema = false;
-        Schema schema = null;
-        AttrSchemaType schemaType = AttrSchemaType.String;
-        if (intAttrName.getSchemaType() != null) {
-            switch (intAttrName.getSchemaType()) {
-                case PLAIN:
-                    schema = plainSchemaDAO.find(intAttrName.getSchemaName());
-                    if (schema != null) {
-                        schemaType = schema.getType();
-                    }
-                    break;
+        AttrSchemaType schemaType = intAttrName.getSchema() instanceof PlainSchema
+                ? ((PlainSchema) intAttrName.getSchema()).getType()
+                : AttrSchemaType.String;
+        boolean readOnlyVirSchema = intAttrName.getSchema() instanceof VirSchema
+                ? intAttrName.getSchema().isReadonly()
+                : false;
 
-                case VIRTUAL:
-                    schema = virSchemaDAO.find(intAttrName.getSchemaName());
-                    readOnlyVirSchema = (schema != null && schema.isReadonly());
-                    break;
-
-                default:
-            }
-        }
-
-        List<PlainAttrValue> values = getIntValues(provision, item, intAttrName, any);
+        Pair<AttrSchemaType, List<PlainAttrValue>> intValues =
+                getIntValues(provision, item, intAttrName, schemaType, any);
+        schemaType = intValues.getLeft();
+        List<PlainAttrValue> values = intValues.getRight();
 
         LOG.debug("Define mapping for: "
                 + "\n* ExtAttrName " + item.getExtAttrName()
                 + "\n* is connObjectKey " + item.isConnObjectKey()
                 + "\n* is password " + item.isPassword()
                 + "\n* mandatory condition " + item.getMandatoryCondition()
-                + "\n* Schema " + intAttrName.getSchemaName()
+                + "\n* Schema " + intAttrName.getSchema()
                 + "\n* ClassType " + schemaType.getType().getName()
+                + "\n* AttrSchemaType " + schemaType
                 + "\n* Values " + values);
 
         Pair<String, Attribute> result;
@@ -361,10 +338,13 @@ public class MappingManagerImpl implements MappingManager {
                 if (FrameworkUtil.isSupportedAttributeType(schemaType.getType())) {
                     objValues.add(value.getValue());
                 } else {
-                    if (schema instanceof PlainSchema) {
-                        objValues.add(value.getValueAsString((PlainSchema) schema));
-                    } else {
+                    PlainSchema plainSchema = intAttrName.getSchema() instanceof PlainSchema
+                            ? (PlainSchema) intAttrName.getSchema()
+                            : null;
+                    if (plainSchema == null || plainSchema.getType() != schemaType) {
                         objValues.add(value.getValueAsString(schemaType));
+                    } else {
+                        objValues.add(value.getValueAsString(plainSchema));
                     }
                 }
             }
@@ -407,10 +387,11 @@ public class MappingManagerImpl implements MappingManager {
 
     @Transactional(readOnly = true)
     @Override
-    public List<PlainAttrValue> getIntValues(
+    public Pair<AttrSchemaType, List<PlainAttrValue>> getIntValues(
             final Provision provision,
             final Item mapItem,
             final IntAttrName intAttrName,
+            final AttrSchemaType schemaType,
             final Any<?> any) {
 
         LOG.debug("Get internal values for {} as '{}' on {}", any, mapItem.getIntAttrName(), provision.getResource());
@@ -474,7 +455,7 @@ public class MappingManagerImpl implements MappingManager {
         }
         if (references.isEmpty()) {
             LOG.warn("Could not determine the reference instance for {}", mapItem.getIntAttrName());
-            return Collections.emptyList();
+            return Pair.of(schemaType, Collections.<PlainAttrValue>emptyList());
         }
 
         List<PlainAttrValue> values = new ArrayList<>();
@@ -566,14 +547,14 @@ public class MappingManagerImpl implements MappingManager {
                     case PLAIN:
                         PlainAttr<?> attr;
                         if (membership == null) {
-                            attr = reference.getPlainAttr(intAttrName.getSchemaName()).orElse(null);
+                            attr = reference.getPlainAttr(intAttrName.getSchema().getKey()).orElse(null);
                         } else {
                             attr = ((GroupableRelatable<?, ?, ?, ?, ?>) reference).getPlainAttr(
-                                    intAttrName.getSchemaName(), membership).orElse(null);
+                                    intAttrName.getSchema().getKey(), membership).orElse(null);
                         }
                         if (attr == null) {
                             LOG.warn("Invalid PlainSchema {} or PlainAttr not found for {}",
-                                    intAttrName.getSchemaName(), reference);
+                                    intAttrName.getSchema().getKey(), reference);
                         } else {
                             if (attr.getUniqueValue() != null) {
                                 values.add(anyUtils.clonePlainAttrValue(attr.getUniqueValue()));
@@ -584,18 +565,14 @@ public class MappingManagerImpl implements MappingManager {
                         break;
 
                     case DERIVED:
-                        DerSchema derSchema = derSchemaDAO.find(intAttrName.getSchemaName());
-                        if (derSchema == null) {
-                            LOG.warn("Invalid DerSchema: {}", intAttrName.getSchemaName());
-                        } else {
-                            String derValue = membership == null
-                                    ? derAttrHandler.getValue(reference, derSchema)
-                                    : derAttrHandler.getValue(reference, membership, derSchema);
-                            if (derValue != null) {
-                                PlainAttrValue attrValue = anyUtils.newPlainAttrValue();
-                                attrValue.setStringValue(derValue);
-                                values.add(attrValue);
-                            }
+                        DerSchema derSchema = (DerSchema) intAttrName.getSchema();
+                        String derValue = membership == null
+                                ? derAttrHandler.getValue(reference, derSchema)
+                                : derAttrHandler.getValue(reference, membership, derSchema);
+                        if (derValue != null) {
+                            PlainAttrValue attrValue = anyUtils.newPlainAttrValue();
+                            attrValue.setStringValue(derValue);
+                            values.add(attrValue);
                         }
                         break;
 
@@ -603,23 +580,19 @@ public class MappingManagerImpl implements MappingManager {
                         // virtual attributes don't get transformed
                         transform = false;
 
-                        VirSchema virSchema = virSchemaDAO.find(intAttrName.getSchemaName());
-                        if (virSchema == null) {
-                            LOG.warn("Invalid VirSchema: {}", intAttrName.getSchemaName());
-                        } else {
-                            LOG.debug("Expire entry cache {}-{}", reference, intAttrName.getSchemaName());
-                            virAttrCache.expire(
-                                    reference.getType().getKey(), reference.getKey(), intAttrName.getSchemaName());
+                        VirSchema virSchema = (VirSchema) intAttrName.getSchema();
+                        LOG.debug("Expire entry cache {}-{}", reference, intAttrName.getSchema().getKey());
+                        virAttrCache.expire(
+                                reference.getType().getKey(), reference.getKey(), intAttrName.getSchema().getKey());
 
-                            List<String> virValues = membership == null
-                                    ? virAttrHandler.getValues(reference, virSchema)
-                                    : virAttrHandler.getValues(reference, membership, virSchema);
-                            virValues.forEach(virValue -> {
-                                PlainAttrValue attrValue = anyUtils.newPlainAttrValue();
-                                attrValue.setStringValue(virValue);
-                                values.add(attrValue);
-                            });
-                        }
+                        List<String> virValues = membership == null
+                                ? virAttrHandler.getValues(reference, virSchema)
+                                : virAttrHandler.getValues(reference, membership, virSchema);
+                        virValues.forEach(virValue -> {
+                            PlainAttrValue attrValue = anyUtils.newPlainAttrValue();
+                            attrValue.setStringValue(virValue);
+                            values.add(attrValue);
+                        });
                         break;
 
                     default:
@@ -642,17 +615,17 @@ public class MappingManagerImpl implements MappingManager {
 
         LOG.debug("Internal values: {}", values);
 
-        List<PlainAttrValue> transformed = values;
+        Pair<AttrSchemaType, List<PlainAttrValue>> trans = Pair.of(schemaType, values);
         if (transform) {
             for (ItemTransformer transformer : MappingUtils.getItemTransformers(mapItem)) {
-                transformed = transformer.beforePropagation(mapItem, any, transformed);
+                trans = transformer.beforePropagation(mapItem, any, trans.getLeft(), trans.getRight());
             }
             LOG.debug("Transformed values: {}", values);
         } else {
             LOG.debug("No transformation occurred");
         }
 
-        return transformed;
+        return trans;
     }
 
     private String getGroupOwnerValue(final Provision provision, final Any<?> any) {
@@ -672,20 +645,21 @@ public class MappingManagerImpl implements MappingManager {
     @Override
     public Optional<String> getConnObjectKeyValue(final Any<?> any, final Provision provision) {
         MappingItem mapItem = provision.getMapping().getConnObjectKeyItem().get();
-        List<PlainAttrValue> values;
+        Pair<AttrSchemaType, List<PlainAttrValue>> intValues;
         try {
-            values = getIntValues(
+            intValues = getIntValues(
                     provision,
                     mapItem,
                     intAttrNameParser.parse(mapItem.getIntAttrName(), provision.getAnyType().getKind()),
+                    AttrSchemaType.String,
                     any);
         } catch (ParseException e) {
             LOG.error("Invalid intAttrName '{}' specified, ignoring", mapItem.getIntAttrName(), e);
-            values = Collections.emptyList();
+            intValues = Pair.of(AttrSchemaType.String, Collections.<PlainAttrValue>emptyList());
         }
-        return Optional.ofNullable(values.isEmpty()
+        return Optional.ofNullable(intValues.getRight().isEmpty()
                 ? null
-                : values.get(0).getValueAsString());
+                : intValues.getRight().get(0).getValueAsString());
     }
 
     @Transactional(readOnly = true)
@@ -755,7 +729,7 @@ public class MappingManagerImpl implements MappingManager {
                     if (anyTO instanceof GroupTO && attr != null) {
                         // using a special attribute (with schema "", that will be ignored) for carrying the
                         // GroupOwnerSchema value
-                        AttrTO attrTO = new AttrTO();
+                        Attr attrTO = new Attr();
                         attrTO.setSchema(StringUtils.EMPTY);
                         if (values.isEmpty() || values.get(0) == null) {
                             attrTO.getValues().add(StringUtils.EMPTY);
@@ -782,10 +756,10 @@ public class MappingManagerImpl implements MappingManager {
 
             switch (intAttrName.getSchemaType()) {
                 case PLAIN:
-                    AttrTO attrTO = new AttrTO();
-                    attrTO.setSchema(intAttrName.getSchemaName());
+                    Attr attrTO = new Attr();
+                    attrTO.setSchema(intAttrName.getSchema().getKey());
 
-                    PlainSchema schema = plainSchemaDAO.find(intAttrName.getSchemaName());
+                    PlainSchema schema = (PlainSchema) intAttrName.getSchema();
 
                     for (Object value : values) {
                         AttrSchemaType schemaType = schema == null ? AttrSchemaType.String : schema.getType();
@@ -802,7 +776,7 @@ public class MappingManagerImpl implements MappingManager {
                         anyTO.getPlainAttrs().add(attrTO);
                     } else {
                         MembershipTO membership = groupableTO.getMembership(group.getKey()).orElseGet(() -> {
-                            MembershipTO newMemb = new MembershipTO.Builder().group(group.getKey()).build();
+                            MembershipTO newMemb = new MembershipTO.Builder(group.getKey()).build();
                             groupableTO.getMemberships().add(newMemb);
                             return newMemb;
                         });
@@ -811,14 +785,14 @@ public class MappingManagerImpl implements MappingManager {
                     break;
 
                 case DERIVED:
-                    attrTO = new AttrTO();
-                    attrTO.setSchema(intAttrName.getSchemaName());
+                    attrTO = new Attr();
+                    attrTO.setSchema(intAttrName.getSchema().getKey());
 
                     if (groupableTO == null || group == null) {
                         anyTO.getDerAttrs().add(attrTO);
                     } else {
                         MembershipTO membership = groupableTO.getMembership(group.getKey()).orElseGet(() -> {
-                            MembershipTO newMemb = new MembershipTO.Builder().group(group.getKey()).build();
+                            MembershipTO newMemb = new MembershipTO.Builder(group.getKey()).build();
                             groupableTO.getMemberships().add(newMemb);
                             return newMemb;
                         });
@@ -827,8 +801,8 @@ public class MappingManagerImpl implements MappingManager {
                     break;
 
                 case VIRTUAL:
-                    attrTO = new AttrTO();
-                    attrTO.setSchema(intAttrName.getSchemaName());
+                    attrTO = new Attr();
+                    attrTO.setSchema(intAttrName.getSchema().getKey());
 
                     // virtual attributes don't get transformed, iterate over original attr.getValue()
                     if (attr.getValue() != null && !attr.getValue().isEmpty()) {
@@ -841,7 +815,7 @@ public class MappingManagerImpl implements MappingManager {
                         anyTO.getVirAttrs().add(attrTO);
                     } else {
                         MembershipTO membership = groupableTO.getMembership(group.getKey()).orElseGet(() -> {
-                            MembershipTO newMemb = new MembershipTO.Builder().group(group.getKey()).build();
+                            MembershipTO newMemb = new MembershipTO.Builder(group.getKey()).build();
                             groupableTO.getMemberships().add(newMemb);
                             return newMemb;
                         });
@@ -883,5 +857,13 @@ public class MappingManagerImpl implements MappingManager {
                 default:
             }
         }
+    }
+
+    @Transactional(readOnly = true)
+    @Override
+    public boolean hasMustChangePassword(final Provision provision) {
+        return provision != null && provision.getMapping() != null
+                && provision.getMapping().getItems().stream().
+                        anyMatch(mappingItem -> "mustChangePassword".equals(mappingItem.getIntAttrName()));
     }
 }

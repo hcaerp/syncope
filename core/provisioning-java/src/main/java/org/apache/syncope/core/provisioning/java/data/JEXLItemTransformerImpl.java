@@ -23,9 +23,11 @@ import java.util.List;
 import org.apache.commons.jexl3.JexlContext;
 import org.apache.commons.jexl3.MapContext;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.syncope.common.lib.to.AnyTO;
 import org.apache.syncope.common.lib.to.EntityTO;
 import org.apache.syncope.common.lib.to.RealmTO;
+import org.apache.syncope.common.lib.types.AttrSchemaType;
 import org.apache.syncope.core.persistence.api.entity.Any;
 import org.apache.syncope.core.persistence.api.entity.Entity;
 import org.apache.syncope.core.persistence.api.entity.PlainAttrValue;
@@ -50,30 +52,39 @@ public class JEXLItemTransformerImpl implements JEXLItemTransformer {
     }
 
     @Override
-    public List<PlainAttrValue> beforePropagation(
+    public Pair<AttrSchemaType, List<PlainAttrValue>> beforePropagation(
             final Item item,
             final Entity entity,
+            final AttrSchemaType schemaType,
             final List<PlainAttrValue> values) {
 
         if (StringUtils.isNotBlank(propagationJEXL) && values != null) {
             values.forEach(value -> {
-                JexlContext jexlContext = new MapContext();
-                if (entity != null) {
-                    JexlUtils.addFieldsToContext(entity, jexlContext);
-                    if (entity instanceof Any) {
-                        JexlUtils.addPlainAttrsToContext(((Any<?>) entity).getPlainAttrs(), jexlContext);
-                        JexlUtils.addDerAttrsToContext(((Any<?>) entity), jexlContext);
+                Object originalValue = value.getValue();
+                if (originalValue != null) {
+                    JexlContext jexlContext = new MapContext();
+                    if (entity != null) {
+                        JexlUtils.addFieldsToContext(entity, jexlContext);
+                        if (entity instanceof Any) {
+                            JexlUtils.addPlainAttrsToContext(((Any<?>) entity).getPlainAttrs(), jexlContext);
+                            JexlUtils.addDerAttrsToContext(((Any<?>) entity), jexlContext);
+                        }
                     }
-                }
-                jexlContext.set("value", value.getValueAsString());
+                    jexlContext.set("value", originalValue);
 
-                value.setStringValue(JexlUtils.evaluate(propagationJEXL, jexlContext));
+                    value.setBinaryValue(null);
+                    value.setBooleanValue(null);
+                    value.setDateValue(null);
+                    value.setDoubleValue(null);
+                    value.setLongValue(null);
+                    value.setStringValue(JexlUtils.evaluate(propagationJEXL, jexlContext));
+                }
             });
 
-            return values;
+            return Pair.of(AttrSchemaType.String, values);
         }
 
-        return values;
+        return JEXLItemTransformer.super.beforePropagation(item, entity, schemaType, values);
     }
 
     @Override
@@ -89,9 +100,9 @@ public class JEXLItemTransformerImpl implements JEXLItemTransformer {
                 jexlContext.set("value", value);
                 if (entityTO instanceof AnyTO) {
                     JexlUtils.addFieldsToContext((AnyTO) entityTO, jexlContext);
-                    JexlUtils.addAttrTOsToContext(((AnyTO) entityTO).getPlainAttrs(), jexlContext);
-                    JexlUtils.addAttrTOsToContext(((AnyTO) entityTO).getDerAttrs(), jexlContext);
-                    JexlUtils.addAttrTOsToContext(((AnyTO) entityTO).getVirAttrs(), jexlContext);
+                    JexlUtils.addAttrsToContext(((AnyTO) entityTO).getPlainAttrs(), jexlContext);
+                    JexlUtils.addAttrsToContext(((AnyTO) entityTO).getDerAttrs(), jexlContext);
+                    JexlUtils.addAttrsToContext(((AnyTO) entityTO).getVirAttrs(), jexlContext);
                 } else if (entityTO instanceof RealmTO) {
                     JexlUtils.addFieldsToContext((RealmTO) entityTO, jexlContext);
                 }

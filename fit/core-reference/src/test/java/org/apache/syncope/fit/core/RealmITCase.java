@@ -39,9 +39,9 @@ import org.apache.syncope.common.lib.to.ImplementationTO;
 import org.apache.syncope.common.lib.to.ProvisioningResult;
 import org.apache.syncope.common.lib.types.ClientExceptionType;
 import org.apache.syncope.common.lib.types.ImplementationEngine;
-import org.apache.syncope.common.lib.types.ImplementationType;
 import org.apache.syncope.common.lib.types.PolicyType;
 import org.apache.syncope.common.lib.types.ExecStatus;
+import org.apache.syncope.common.lib.types.IdRepoImplementationType;
 import org.apache.syncope.common.rest.api.RESTHeaders;
 import org.apache.syncope.common.rest.api.service.RealmService;
 import org.apache.syncope.core.provisioning.api.serialization.POJOHelper;
@@ -136,7 +136,7 @@ public class RealmITCase extends AbstractITCase {
         ImplementationTO rule = new ImplementationTO();
         rule.setKey("DefaultAccountRuleConf" + UUID.randomUUID().toString());
         rule.setEngine(ImplementationEngine.JAVA);
-        rule.setType(ImplementationType.ACCOUNT_RULE);
+        rule.setType(IdRepoImplementationType.ACCOUNT_RULE);
         rule.setBody(POJOHelper.serialize(ruleConf));
         Response response = implementationService.create(rule);
         rule.setKey(response.getHeaderString(RESTHeaders.RESOURCE_KEY));
@@ -267,5 +267,24 @@ public class RealmITCase extends AbstractITCase {
                 getLdapRemoteObject(RESOURCE_LDAP_ADMIN_DN, RESOURCE_LDAP_ADMIN_PWD, "ou=child,ou=test,o=isp"));
         assertNull(
                 getLdapRemoteObject(RESOURCE_LDAP_ADMIN_DN, RESOURCE_LDAP_ADMIN_PWD, "ou=test,o=isp"));
+    }
+
+    @Test
+    public void issueSYNCOPE1472() {
+        // 1. assign twice resource-ldap-orgunit to /odd
+        RealmTO realmTO = realmService.list("/odd").get(0);
+        realmTO.getResources().clear();
+        realmTO.getResources().add("resource-ldap-orgunit");
+        realmTO.getResources().add("resource-ldap-orgunit");
+        realmTO = realmService.update(realmTO).readEntity(new GenericType<ProvisioningResult<RealmTO>>() {
+        }).getEntity();
+
+        // 2. remove resource-ldap-orgunit resource
+        realmTO.getResources().remove("resource-ldap-orgunit");
+
+        realmTO = realmService.update(realmTO).readEntity(new GenericType<ProvisioningResult<RealmTO>>() {
+        }).getEntity();
+
+        assertFalse(realmTO.getResources().contains("resource-ldap-orgunit"), "Should not contain removed resources");
     }
 }

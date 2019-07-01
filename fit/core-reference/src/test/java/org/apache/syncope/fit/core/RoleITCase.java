@@ -28,11 +28,13 @@ import java.util.List;
 import javax.ws.rs.core.Response;
 import org.apache.syncope.common.lib.SyncopeClientException;
 import org.apache.syncope.common.lib.SyncopeConstants;
+import org.apache.syncope.common.lib.to.DynRealmTO;
 import org.apache.syncope.common.lib.to.RoleTO;
 import org.apache.syncope.common.lib.to.UserTO;
+import org.apache.syncope.common.lib.types.AnyTypeKind;
 import org.apache.syncope.common.lib.types.ClientExceptionType;
 import org.apache.syncope.common.lib.types.FlowableEntitlement;
-import org.apache.syncope.common.lib.types.StandardEntitlement;
+import org.apache.syncope.common.lib.types.IdRepoEntitlement;
 import org.apache.syncope.common.rest.api.service.RoleService;
 import org.apache.syncope.fit.AbstractITCase;
 import org.junit.jupiter.api.Test;
@@ -43,7 +45,7 @@ public class RoleITCase extends AbstractITCase {
         RoleTO role = new RoleTO();
         role.setKey(name + getUUIDString());
         role.getRealms().add("/even");
-        role.getEntitlements().add(StandardEntitlement.LOG_SET_LEVEL);
+        role.getEntitlements().add(IdRepoEntitlement.LOG_SET_LEVEL);
 
         return role;
     }
@@ -62,7 +64,7 @@ public class RoleITCase extends AbstractITCase {
     public void read() {
         RoleTO roleTO = roleService.read("Search for realm evenTwo");
         assertNotNull(roleTO);
-        assertTrue(roleTO.getEntitlements().contains(StandardEntitlement.USER_READ));
+        assertTrue(roleTO.getEntitlements().contains(IdRepoEntitlement.USER_READ));
     }
 
     @Test
@@ -70,8 +72,8 @@ public class RoleITCase extends AbstractITCase {
         RoleTO role = new RoleTO();
         role.getRealms().add(SyncopeConstants.ROOT_REALM);
         role.getRealms().add("/even/two");
-        role.getEntitlements().add(StandardEntitlement.LOG_LIST);
-        role.getEntitlements().add(StandardEntitlement.LOG_SET_LEVEL);
+        role.getEntitlements().add(IdRepoEntitlement.LOG_LIST);
+        role.getEntitlements().add(IdRepoEntitlement.LOG_SET_LEVEL);
 
         try {
             createRole(role);
@@ -145,5 +147,31 @@ public class RoleITCase extends AbstractITCase {
         bellini = userService.read("bellini");
         assertTrue(bellini.getDynMemberships().isEmpty());
         assertTrue(bellini.getPrivileges().isEmpty());
+    }
+
+    @Test
+    public void issueSYNCOPE1472() {
+        final DynRealmTO dynRealmTO = new DynRealmTO();
+        dynRealmTO.setKey("dynRealm");
+        dynRealmTO.getDynMembershipConds().put(AnyTypeKind.USER.name(), "username=~rossini");
+        dynRealmService.create(dynRealmTO);
+
+        // 1. associate role Other again to /odd realm and twice to dynRealm
+        RoleTO roleTO = roleService.read("Other");
+        roleTO.getRealms().add("/odd");
+        roleTO.getDynRealms().add("dynRealm");
+        roleTO.getDynRealms().add("dynRealm");
+        roleService.update(roleTO);
+
+        // 2. update by removing realm and dynamic realm
+        roleTO = roleService.read("Other");
+        roleTO.getRealms().remove("/odd");
+        roleTO.getDynRealms().remove("dynRealm");
+        roleService.update(roleTO);
+
+        roleTO = roleService.read("Other");
+
+        assertFalse(roleTO.getRealms().contains("/odd"), "Should not contain removed realms");
+        assertFalse(roleTO.getDynRealms().contains("dynRealm"), "Should not contain removed dynamic realms");
     }
 }

@@ -34,8 +34,8 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.apache.cxf.rs.security.jose.jws.JwsJwtCompactConsumer;
 import org.apache.cxf.rs.security.jose.jws.JwsSignatureVerifier;
 import org.apache.cxf.rs.security.saml.sso.SSOValidatorResponse;
+import org.apache.syncope.common.lib.Attr;
 import org.apache.syncope.common.lib.SyncopeClientException;
-import org.apache.syncope.common.lib.to.AttrTO;
 import org.apache.syncope.common.lib.to.EntityTO;
 import org.apache.syncope.common.lib.to.SAML2RequestTO;
 import org.apache.syncope.common.lib.to.SAML2LoginResponseTO;
@@ -44,12 +44,13 @@ import org.apache.syncope.common.lib.to.UserTO;
 import org.apache.syncope.common.lib.types.CipherAlgorithm;
 import org.apache.syncope.common.lib.types.ClientExceptionType;
 import org.apache.syncope.common.lib.types.SAML2BindingType;
-import org.apache.syncope.common.lib.types.StandardEntitlement;
+import org.apache.syncope.common.lib.types.IdRepoEntitlement;
 import org.apache.syncope.core.logic.saml2.SAML2ReaderWriter;
 import org.apache.syncope.core.logic.saml2.SAML2IdPCache;
 import org.apache.syncope.core.logic.saml2.SAML2IdPEntity;
 import org.apache.syncope.core.logic.saml2.SAML2UserManager;
 import org.apache.syncope.core.persistence.api.dao.AccessTokenDAO;
+import org.apache.syncope.core.persistence.api.dao.ImplementationDAO;
 import org.apache.syncope.core.persistence.api.dao.NotFoundException;
 import org.apache.syncope.core.persistence.api.dao.SAML2IdPDAO;
 import org.apache.syncope.core.persistence.api.entity.SAML2IdP;
@@ -98,13 +99,12 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Component;
 import org.apache.syncope.core.provisioning.api.serialization.POJOHelper;
 import org.apache.syncope.core.provisioning.java.DefaultRequestedAuthnContextProvider;
-import org.apache.syncope.core.spring.ApplicationContextProvider;
+import org.apache.syncope.core.spring.ImplementationManager;
 import org.apache.syncope.core.spring.security.AuthContextUtils;
 import org.apache.syncope.core.spring.security.AuthDataAccessor;
 import org.apache.syncope.core.spring.security.Encryptor;
 import org.apache.syncope.core.spring.security.SecureRandomUtils;
 import org.opensaml.core.xml.schema.XSAny;
-import org.springframework.beans.factory.support.AbstractBeanDefinition;
 import org.springframework.util.ResourceUtils;
 
 @Component
@@ -140,6 +140,9 @@ public class SAML2SPLogic extends AbstractSAML2Logic<EntityTO> {
 
     @Autowired
     private AccessTokenDAO accessTokenDAO;
+
+    @Autowired
+    private ImplementationDAO implementationDAO;
 
     @Autowired
     private AuthDataAccessor authDataAccessor;
@@ -252,7 +255,7 @@ public class SAML2SPLogic extends AbstractSAML2Logic<EntityTO> {
         return idp;
     }
 
-    @PreAuthorize("hasRole('" + StandardEntitlement.ANONYMOUS + "')")
+    @PreAuthorize("hasRole('" + IdRepoEntitlement.ANONYMOUS + "')")
     public SAML2RequestTO createLoginRequest(final String spEntityID, final String idpEntityID) {
         check();
 
@@ -294,14 +297,12 @@ public class SAML2SPLogic extends AbstractSAML2Logic<EntityTO> {
         nameIDPolicy.setSPNameQualifier(spEntityID);
 
         RequestedAuthnContextProvider requestedAuthnContextProvider = new DefaultRequestedAuthnContextProvider();
-        if (idp.getRequestedAuthnContextProviderClassName() != null) {
+        if (idp.getRequestedAuthnContextProvider() != null) {
             try {
-                Class<?> actionsClass = Class.forName(idp.getRequestedAuthnContextProviderClassName());
-                requestedAuthnContextProvider = (RequestedAuthnContextProvider) ApplicationContextProvider.
-                        getBeanFactory().createBean(actionsClass, AbstractBeanDefinition.AUTOWIRE_BY_TYPE, true);
+                ImplementationManager.build(implementationDAO.find(idp.getRequestedAuthnContextProvider()));
             } catch (Exception e) {
                 LOG.warn("Cannot instantiate '{}', reverting to {}",
-                        idp.getRequestedAuthnContextProviderClassName(),
+                        idp.getRequestedAuthnContextProvider(),
                         DefaultRequestedAuthnContextProvider.class.getName(), e);
             }
         }
@@ -332,13 +333,13 @@ public class SAML2SPLogic extends AbstractSAML2Logic<EntityTO> {
             // 4. sign and encode AuthnRequest
             switch (idp.getBindingType()) {
                 case REDIRECT:
-                    requestTO.setRelayState(URLEncoder.encode(relayState.getLeft(), StandardCharsets.UTF_8.name()));
+                    requestTO.setRelayState(URLEncoder.encode(relayState.getLeft(), StandardCharsets.UTF_8));
                     requestTO.setContent(URLEncoder.encode(
-                            saml2rw.encode(authnRequest, true), StandardCharsets.UTF_8.name()));
-                    requestTO.setSignAlg(URLEncoder.encode(saml2rw.getSigAlgo(), StandardCharsets.UTF_8.name()));
+                            saml2rw.encode(authnRequest, true), StandardCharsets.UTF_8));
+                    requestTO.setSignAlg(URLEncoder.encode(saml2rw.getSigAlgo(), StandardCharsets.UTF_8));
                     requestTO.setSignature(URLEncoder.encode(
                             saml2rw.sign(requestTO.getContent(), requestTO.getRelayState()),
-                            StandardCharsets.UTF_8.name()));
+                            StandardCharsets.UTF_8));
                     break;
 
                 case POST:
@@ -357,7 +358,7 @@ public class SAML2SPLogic extends AbstractSAML2Logic<EntityTO> {
         return requestTO;
     }
 
-    @PreAuthorize("hasRole('" + StandardEntitlement.ANONYMOUS + "')")
+    @PreAuthorize("hasRole('" + IdRepoEntitlement.ANONYMOUS + "')")
     public SAML2LoginResponseTO validateLoginResponse(final SAML2ReceivedResponseTO response) {
         check();
 
@@ -472,7 +473,7 @@ public class SAML2SPLogic extends AbstractSAML2Logic<EntityTO> {
                         }
                     }
 
-                    AttrTO attrTO = new AttrTO();
+                    Attr attrTO = new Attr();
                     attrTO.setSchema(attrName);
                     attr.getAttributeValues().stream().
                             filter(value -> value.getDOM() != null).
@@ -494,7 +495,7 @@ public class SAML2SPLogic extends AbstractSAML2Logic<EntityTO> {
             if (idp.isCreateUnmatching()) {
                 LOG.debug("No user matching {}, about to create", keyValue);
 
-                username = AuthContextUtils.execWithAuthContext(AuthContextUtils.getDomain(),
+                username = AuthContextUtils.callAsAdmin(AuthContextUtils.getDomain(),
                         () -> userManager.create(idp, responseTO, nameID.getValue()));
             } else if (idp.isSelfRegUnmatching()) {
                 responseTO.setNameID(nameID.getValue());
@@ -521,7 +522,7 @@ public class SAML2SPLogic extends AbstractSAML2Logic<EntityTO> {
             if (idp.isUpdateMatching()) {
                 LOG.debug("About to update {} for {}", matchingUsers.get(0), keyValue);
 
-                username = AuthContextUtils.execWithAuthContext(AuthContextUtils.getDomain(), ()
+                username = AuthContextUtils.callAsAdmin(AuthContextUtils.getDomain(), ()
                         -> userManager.update(matchingUsers.get(0), idp, responseTO));
             } else {
                 username = matchingUsers.get(0);
@@ -555,7 +556,7 @@ public class SAML2SPLogic extends AbstractSAML2Logic<EntityTO> {
         return responseTO;
     }
 
-    @PreAuthorize("isAuthenticated() and not(hasRole('" + StandardEntitlement.ANONYMOUS + "'))")
+    @PreAuthorize("isAuthenticated() and not(hasRole('" + IdRepoEntitlement.ANONYMOUS + "'))")
     public SAML2RequestTO createLogoutRequest(final String accessToken, final String spEntityID) {
         check();
 
@@ -636,7 +637,7 @@ public class SAML2SPLogic extends AbstractSAML2Logic<EntityTO> {
         return requestTO;
     }
 
-    @PreAuthorize("isAuthenticated() and not(hasRole('" + StandardEntitlement.ANONYMOUS + "'))")
+    @PreAuthorize("isAuthenticated() and not(hasRole('" + IdRepoEntitlement.ANONYMOUS + "'))")
     public void validateLogoutResponse(final String accessToken, final SAML2ReceivedResponseTO response) {
         check();
 

@@ -42,7 +42,12 @@ under the License.
       <groupId>javax.validation</groupId>
       <artifactId>validation-api</artifactId>
     </dependency>
-      
+
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-core</artifactId>
+    </dependency>
+
     <dependency>
       <groupId>net.tirasa.connid</groupId>
       <artifactId>connector-framework</artifactId>
@@ -57,8 +62,19 @@ under the License.
     </dependency>
       
     <dependency>
-      <groupId>org.apache.syncope.common</groupId>
-      <artifactId>syncope-common-lib</artifactId>
+      <groupId>org.apache.syncope.common.idm</groupId>
+      <artifactId>syncope-common-idm-lib</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.syncope.common.am</groupId>
+      <artifactId>syncope-common-am-lib</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    
+    <dependency>
+      <groupId>org.apache.syncope.common.keymaster</groupId>
+      <artifactId>syncope-common-keymaster-client-api</artifactId>
       <version>${project.version}</version>
     </dependency>
     
@@ -71,7 +87,7 @@ under the License.
     </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
-      <artifactId>junit-jupiter-engine</artifactId>
+      <artifactId>junit-jupiter</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>

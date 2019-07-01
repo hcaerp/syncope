@@ -42,7 +42,7 @@ under the License.
       <extension>
         <groupId>org.apache.maven.archetype</groupId>
         <artifactId>archetype-packaging</artifactId>
-        <version>3.0.1</version>
+        <version>3.1.1</version>
       </extension>
     </extensions>
 
@@ -51,7 +51,7 @@ under the License.
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-archetype-plugin</artifactId>
-          <version>3.0.1</version>
+          <version>3.1.1</version>
           <extensions>true</extensions>
         </plugin>
       </plugins>
@@ -127,6 +127,13 @@ under the License.
       </resource>
 
       <resource>
+        <directory>../core/starter/src/main/resources</directory>
+        <includes>
+          <include>application.properties</include>
+        </includes>
+        <targetPath>${project.build.outputDirectory}/archetype-resources/core/src/main/resources</targetPath>
+      </resource>
+      <resource>
         <directory>../core/provisioning-java/src/main/resources</directory>
         <excludes>
           <exclude>*Context.xml</exclude>
@@ -136,8 +143,6 @@ under the License.
       <resource>
         <directory>../core/persistence-jpa/src/main/resources</directory>
         <excludes>
-          <exclude>*Context.xml</exclude>
-          <exclude>domains.xml</exclude>
           <exclude>META-INF/spring-persistence.xml</exclude>
         </excludes>
         <targetPath>${project.build.outputDirectory}/archetype-resources/core/src/main/resources</targetPath>
@@ -149,9 +154,6 @@ under the License.
       <resource>
         <directory>../core/logic/src/main/resources</directory>
         <targetPath>${project.build.outputDirectory}/archetype-resources/core/src/main/resources</targetPath>
-        <excludes>
-          <exclude>*Context.xml</exclude>
-        </excludes>
       </resource>
       <resource>
         <directory>../core/spring/src/main/resources</directory>
@@ -164,8 +166,15 @@ under the License.
         <directory>../fit/core-reference/src/main/resources</directory>
         <targetPath>${project.build.outputDirectory}/archetype-resources/core/src/main/resources</targetPath>
         <includes>
-          <include>coreContext.xml</include>
+          <include>application-embedded.properties</include>
           <include>log4j2.xml</include>
+        </includes>
+      </resource>
+      <resource>
+        <directory>../ext/self-keymaster/client/src/main/resources</directory>
+        <targetPath>${project.build.outputDirectory}/archetype-resources/core/src/main/resources</targetPath>
+        <includes>
+          <include>keymaster.properties</include>
         </includes>
       </resource>
       <resource>
@@ -183,6 +192,21 @@ under the License.
         </includes>
       </resource>      
       <resource>
+        <directory>../fit/core-reference/src/main/resources</directory>
+        <targetPath>${project.build.outputDirectory}/archetype-resources/core/src/test/resources</targetPath>
+        <includes>
+          <include>keymaster.properties</include>
+        </includes>
+      </resource>
+      <resource>
+        <directory>../fit/core-reference/src/test/resources</directory>
+        <targetPath>${project.build.outputDirectory}/archetype-resources/core/src/test/resources</targetPath>
+        <includes>
+          <include>keystore</include>
+          <include>mail.properties</include>
+        </includes>
+      </resource>
+      <resource>
         <directory>../fit/core-reference/src/test/resources/scriptedsql</directory>
         <targetPath>${project.build.outputDirectory}/archetype-resources/core/src/test/resources/scriptedsql</targetPath>
       </resource>
@@ -199,29 +223,15 @@ under the License.
         </includes>
       </resource>
       <resource>
-        <directory>../fit/core-reference/src/main/webapp</directory>
-        <targetPath>${project.build.outputDirectory}/archetype-resources/core/src/test/resources</targetPath>
-        <includes>
-          <include>*.jsp</include>
-        </includes>
-      </resource>
-      <resource>
         <directory>../fit/core-reference/src/main/webapp/WEB-INF</directory>
         <targetPath>${project.build.outputDirectory}/archetype-resources/core/src/main/webapp/WEB-INF</targetPath>
       </resource>
-      <resource>
-        <directory>../fit/core-reference/src/test/resources</directory>
-        <targetPath>${project.build.outputDirectory}/archetype-resources/core/src/test/resources</targetPath>
-        <includes>
-          <include>addFlowableToContent.xsl</include>
-          <include>keystore</include>
-        </includes>
-      </resource>
             
       <resource>
-        <directory>../client/console/src/main/resources</directory>
+        <directory>../client/idrepo/console/src/main/resources</directory>
         <targetPath>${project.build.outputDirectory}/archetype-resources/console/src/main/resources</targetPath>
         <includes>
+          <include>application.properties</include>
           <include>console.properties</include>
         </includes>
       </resource>
@@ -240,9 +250,17 @@ under the License.
         </includes>
       </resource>
       <resource>
+        <directory>../ext/self-keymaster/client/src/main/resources</directory>
+        <targetPath>${project.build.outputDirectory}/archetype-resources/console/src/main/resources</targetPath>
+        <includes>
+          <include>keymaster.properties</include>
+        </includes>
+      </resource>
+      <resource>
         <directory>../fit/console-reference/src/main/resources</directory>
         <targetPath>${project.build.outputDirectory}/archetype-resources/console/src/main/resources</targetPath>
         <includes>
+          <include>application-embedded.properties</include>
           <include>log4j2.xml</include>
         </includes>
       </resource>
@@ -251,14 +269,8 @@ under the License.
         <targetPath>${project.build.outputDirectory}/archetype-resources/console/src/test/resources</targetPath>
         <includes>
           <include>console.properties</include>
+          <include>keymaster.properties</include>
           <include>saml2sp-agent.properties</include>
-        </includes>
-      </resource>
-      <resource>
-        <directory>../fit/console-reference/src/main/resources</directory>
-        <targetPath>${project.build.outputDirectory}/archetype-resources/console/src/test/resources</targetPath>
-        <includes>
-          <include>console.properties</include>
           <include>oidcclient-agent.properties</include>
         </includes>
       </resource>
@@ -268,12 +280,20 @@ under the License.
       </resource>
       
       <resource>
-        <directory>../client/enduser/src/main/resources</directory>
+        <directory>../client/idrepo/enduser/src/main/resources</directory>
         <targetPath>${project.build.outputDirectory}/archetype-resources/enduser/src/main/resources</targetPath>
         <includes>
+          <include>application.properties</include>
           <include>enduser.properties</include>
           <include>customFormAttributes.json</include>
           <include>customTemplate.json</include>
+        </includes>
+      </resource>
+      <resource>
+        <directory>../ext/self-keymaster/client/src/main/resources</directory>
+        <targetPath>${project.build.outputDirectory}/archetype-resources/enduser/src/main/resources</targetPath>
+        <includes>
+          <include>keymaster.properties</include>
         </includes>
       </resource>
       <resource>
@@ -291,13 +311,10 @@ under the License.
         </includes>
       </resource>
       <resource>
-        <directory>../client/enduser/src/main/resources/META-INF/resources/app</directory>
-        <targetPath>${project.build.outputDirectory}/archetype-resources/enduser/src/main/webapp/app</targetPath>
-      </resource>
-      <resource>
         <directory>../fit/enduser-reference/src/main/resources</directory>
         <targetPath>${project.build.outputDirectory}/archetype-resources/enduser/src/main/resources</targetPath>
         <includes>
+          <include>application-embedded.properties</include>
           <include>log4j2.xml</include>
         </includes>
       </resource>
@@ -306,23 +323,28 @@ under the License.
         <targetPath>${project.build.outputDirectory}/archetype-resources/enduser/src/test/resources</targetPath>
         <includes>
           <include>enduser.properties</include>
-          <include>saml2sp-agent.properties</include>
           <include>customFormAttributes.json</include>
           <include>customTemplate.json</include>
-        </includes>
-      </resource>
-      <resource>
-        <directory>../fit/enduser-reference/src/main/resources</directory>
-        <targetPath>${project.build.outputDirectory}/archetype-resources/enduser/src/test/resources</targetPath>
-        <includes>
-          <include>enduser.properties</include>
+          <include>keymaster.properties</include>
+          <include>saml2sp-agent.properties</include>
           <include>oidcclient-agent.properties</include>
-          <include>customFormAttributes.json</include>
         </includes>
       </resource>
       <resource>
         <directory>../fit/enduser-reference/src/main/webapp/WEB-INF</directory>
         <targetPath>${project.build.outputDirectory}/archetype-resources/enduser/src/main/webapp/WEB-INF</targetPath>
+      </resource>
+      
+      <resource>
+        <directory>../sra/src/main/resources</directory>
+        <targetPath>${project.build.outputDirectory}/archetype-resources/sra/src/main/resources</targetPath>
+      </resource>
+      <resource>
+        <directory>../sra/src/test/resources</directory>
+        <targetPath>${project.build.outputDirectory}/archetype-resources/sra/src/main/resources</targetPath>
+        <includes>
+          <include>keymaster.properties</include>          
+        </includes>
       </resource>
     </resources>
   </build>

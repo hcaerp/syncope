@@ -19,12 +19,12 @@
 package org.apache.syncope.fit.core.reference;
 
 import java.util.Optional;
-import org.apache.syncope.common.lib.patch.AnyPatch;
-import org.apache.syncope.common.lib.patch.AttrPatch;
-import org.apache.syncope.common.lib.to.AnyTO;
-import org.apache.syncope.common.lib.to.AttrTO;
+import org.apache.syncope.common.lib.request.AnyCR;
+import org.apache.syncope.common.lib.request.AnyUR;
+import org.apache.syncope.common.lib.request.AttrPatch;
+import org.apache.syncope.common.lib.request.UserCR;
+import org.apache.syncope.common.lib.Attr;
 import org.apache.syncope.common.lib.to.EntityTO;
-import org.apache.syncope.common.lib.to.UserTO;
 import org.apache.syncope.common.lib.types.PatchOperation;
 import org.apache.syncope.core.provisioning.api.pushpull.IgnoreProvisionException;
 import org.apache.syncope.core.provisioning.api.pushpull.ProvisioningProfile;
@@ -41,54 +41,50 @@ public class TestPullActions implements PullActions {
 
     @Override
     public void beforeProvision(
-            final ProvisioningProfile<?, ?> profile, final SyncDelta delta, final EntityTO entity)
+            final ProvisioningProfile<?, ?> profile, final SyncDelta delta, final AnyCR anyCR)
             throws JobExecutionException {
 
-        if (entity instanceof AnyTO) {
-            AnyTO any = (AnyTO) entity;
-
-            Optional<AttrTO> attrTO = any.getPlainAttr("fullname");
-            if (!attrTO.isPresent()) {
-                attrTO = Optional.of(new AttrTO());
-                attrTO.get().setSchema("fullname");
-                any.getPlainAttrs().add(attrTO.get());
-            }
-            attrTO.get().getValues().clear();
-            attrTO.get().getValues().add(String.valueOf(counter++));
+        Optional<Attr> attrTO = anyCR.getPlainAttrs().stream().
+                filter(attr -> "fullname".equals(attr.getSchema())).findFirst();
+        if (!attrTO.isPresent()) {
+            attrTO = Optional.of(new Attr());
+            attrTO.get().setSchema("fullname");
+            anyCR.getPlainAttrs().add(attrTO.get());
         }
+        attrTO.get().getValues().clear();
+        attrTO.get().getValues().add(String.valueOf(counter++));
     }
 
     @Override
     public void beforeAssign(
-            final ProvisioningProfile<?, ?> profile, final SyncDelta delta, final EntityTO entity)
+            final ProvisioningProfile<?, ?> profile, final SyncDelta delta, final AnyCR anyCR)
             throws JobExecutionException {
 
-        if (entity instanceof UserTO && "test2".equals(UserTO.class.cast(entity).getUsername())) {
+        if (anyCR instanceof UserCR && "test2".equals(UserCR.class.cast(anyCR).getUsername())) {
             throw new IgnoreProvisionException();
         }
     }
 
     @Override
-    public <M extends AnyPatch> void beforeUpdate(
+    public void beforeUpdate(
             final ProvisioningProfile<?, ?> profile,
             final SyncDelta delta,
             final EntityTO entityTO,
-            final M anyPatch) throws JobExecutionException {
+            final AnyUR anyUR) throws JobExecutionException {
 
         AttrPatch fullnamePatch = null;
-        for (AttrPatch attrPatch : anyPatch.getPlainAttrs()) {
-            if ("fullname".equals(attrPatch.getAttrTO().getSchema())) {
+        for (AttrPatch attrPatch : anyUR.getPlainAttrs()) {
+            if ("fullname".equals(attrPatch.getAttr().getSchema())) {
                 fullnamePatch = attrPatch;
             }
         }
         if (fullnamePatch == null) {
-            fullnamePatch = new AttrPatch.Builder().
+            fullnamePatch = new AttrPatch.Builder(new Attr.Builder("fullname").build()).
                     operation(PatchOperation.ADD_REPLACE).
-                    attrTO(new AttrTO.Builder().schema("fullname").build()).
                     build();
         }
 
-        fullnamePatch.getAttrTO().getValues().clear();
-        fullnamePatch.getAttrTO().getValues().add(String.valueOf(counter++));
+        fullnamePatch.getAttr().getValues().clear();
+        fullnamePatch.getAttr().getValues().add(String.valueOf(counter++));
     }
 }

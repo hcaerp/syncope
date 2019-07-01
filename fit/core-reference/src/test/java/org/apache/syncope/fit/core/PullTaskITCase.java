@@ -40,7 +40,6 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
-import javax.sql.DataSource;
 import javax.ws.rs.core.Response;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.SerializationUtils;
@@ -48,13 +47,17 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.apache.syncope.client.lib.SyncopeClient;
 import org.apache.syncope.common.lib.SyncopeClientException;
 import org.apache.syncope.common.lib.SyncopeConstants;
-import org.apache.syncope.common.lib.patch.DeassociationPatch;
-import org.apache.syncope.common.lib.patch.PasswordPatch;
-import org.apache.syncope.common.lib.patch.UserPatch;
+import org.apache.syncope.common.lib.request.ResourceDR;
+import org.apache.syncope.common.lib.request.PasswordPatch;
+import org.apache.syncope.common.lib.request.UserUR;
 import org.apache.syncope.common.lib.policy.PullPolicyTO;
+import org.apache.syncope.common.lib.request.AnyCR;
+import org.apache.syncope.common.lib.request.AnyObjectCR;
+import org.apache.syncope.common.lib.request.GroupCR;
+import org.apache.syncope.common.lib.request.UserCR;
 import org.apache.syncope.common.lib.to.TaskTO;
 import org.apache.syncope.common.lib.to.AnyObjectTO;
-import org.apache.syncope.common.lib.to.AttrTO;
+import org.apache.syncope.common.lib.Attr;
 import org.apache.syncope.common.lib.to.ConnInstanceTO;
 import org.apache.syncope.common.lib.to.ConnObjectTO;
 import org.apache.syncope.common.lib.to.MembershipTO;
@@ -75,9 +78,9 @@ import org.apache.syncope.common.lib.types.ClientExceptionType;
 import org.apache.syncope.common.lib.types.ConnConfProperty;
 import org.apache.syncope.common.lib.types.ConnectorCapability;
 import org.apache.syncope.common.lib.types.ImplementationEngine;
-import org.apache.syncope.common.lib.types.ImplementationType;
 import org.apache.syncope.common.lib.types.PolicyType;
 import org.apache.syncope.common.lib.types.ExecStatus;
+import org.apache.syncope.common.lib.types.IdMImplementationType;
 import org.apache.syncope.common.lib.types.ResourceDeassociationAction;
 import org.apache.syncope.common.lib.types.PullMode;
 import org.apache.syncope.common.lib.types.ResourceOperation;
@@ -96,28 +99,22 @@ import org.apache.syncope.fit.core.reference.TestPullActions;
 import org.identityconnectors.framework.common.objects.Name;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 
-@SpringJUnitConfig(locations = { "classpath:testJDBCEnv.xml" })
 public class PullTaskITCase extends AbstractTaskITCase {
-
-    @Autowired
-    private DataSource testDataSource;
 
     @BeforeAll
     public static void testPullActionsSetup() {
         ImplementationTO pullActions = null;
         try {
             pullActions = implementationService.read(
-                    ImplementationType.PULL_ACTIONS, TestPullActions.class.getSimpleName());
+                    IdMImplementationType.PULL_ACTIONS, TestPullActions.class.getSimpleName());
         } catch (SyncopeClientException e) {
             if (e.getType().getResponseStatus() == Response.Status.NOT_FOUND) {
                 pullActions = new ImplementationTO();
                 pullActions.setKey(TestPullActions.class.getSimpleName());
                 pullActions.setEngine(ImplementationEngine.JAVA);
-                pullActions.setType(ImplementationType.PULL_ACTIONS);
+                pullActions.setType(IdMImplementationType.PULL_ACTIONS);
                 pullActions.setBody(TestPullActions.class.getName());
                 Response response = implementationService.create(pullActions);
                 pullActions = implementationService.read(
@@ -135,7 +132,7 @@ public class PullTaskITCase extends AbstractTaskITCase {
     @Test
     public void getPullActionsClasses() {
         Set<String> actions = syncopeService.platform().
-                getJavaImplInfo(ImplementationType.PULL_ACTIONS).get().getClasses();
+                getJavaImplInfo(IdMImplementationType.PULL_ACTIONS).get().getClasses();
         assertNotNull(actions);
         assertFalse(actions.isEmpty());
     }
@@ -160,8 +157,7 @@ public class PullTaskITCase extends AbstractTaskITCase {
         UserTO userTemplate = new UserTO();
         userTemplate.getResources().add(RESOURCE_NAME_WS2);
 
-        userTemplate.getMemberships().add(
-                new MembershipTO.Builder().group("f779c0d4-633b-4be5-8f57-32eb478a3ca5").build());
+        userTemplate.getMemberships().add(new MembershipTO.Builder("f779c0d4-633b-4be5-8f57-32eb478a3ca5").build());
         task.getTemplates().put(AnyTypeKind.USER.name(), userTemplate);
 
         GroupTO groupTemplate = new GroupTO();
@@ -190,7 +186,7 @@ public class PullTaskITCase extends AbstractTaskITCase {
         InputStream srcStream = null;
         OutputStream dstStream = null;
         try {
-            propStream = getClass().getResourceAsStream("/core-test.properties");
+            propStream = getClass().getResourceAsStream("/test.properties");
             props.load(propStream);
 
             srcStream = new FileInputStream(props.getProperty("test.csv.src"));
@@ -214,20 +210,20 @@ public class PullTaskITCase extends AbstractTaskITCase {
         // -----------------------------
         // Create a new user ... it should be updated applying pull policy
         // -----------------------------
-        UserTO inUserTO = new UserTO();
-        inUserTO.setRealm(SyncopeConstants.ROOT_REALM);
-        inUserTO.setPassword("password123");
+        UserCR inUserRC = new UserCR();
+        inUserRC.setRealm(SyncopeConstants.ROOT_REALM);
+        inUserRC.setPassword("password123");
         String userName = "test9";
-        inUserTO.setUsername(userName);
-        inUserTO.getPlainAttrs().add(attrTO("firstname", "nome9"));
-        inUserTO.getPlainAttrs().add(attrTO("surname", "cognome"));
-        inUserTO.getPlainAttrs().add(attrTO("ctype", "a type"));
-        inUserTO.getPlainAttrs().add(attrTO("fullname", "nome cognome"));
-        inUserTO.getPlainAttrs().add(attrTO("userId", "puccini@syncope.apache.org"));
-        inUserTO.getPlainAttrs().add(attrTO("email", "puccini@syncope.apache.org"));
-        inUserTO.getAuxClasses().add("csv");
+        inUserRC.setUsername(userName);
+        inUserRC.getPlainAttrs().add(attr("firstname", "nome9"));
+        inUserRC.getPlainAttrs().add(attr("surname", "cognome"));
+        inUserRC.getPlainAttrs().add(attr("ctype", "a type"));
+        inUserRC.getPlainAttrs().add(attr("fullname", "nome cognome"));
+        inUserRC.getPlainAttrs().add(attr("userId", "puccini@syncope.apache.org"));
+        inUserRC.getPlainAttrs().add(attr("email", "puccini@syncope.apache.org"));
+        inUserRC.getAuxClasses().add("csv");
 
-        inUserTO = createUser(inUserTO).getEntity();
+        UserTO inUserTO = createUser(inUserRC).getEntity();
         assertNotNull(inUserTO);
         assertFalse(inUserTO.getResources().contains(RESOURCE_NAME_CSV));
 
@@ -347,7 +343,7 @@ public class PullTaskITCase extends AbstractTaskITCase {
             assertNotNull(userTO);
             assertEquals("active", userTO.getStatus());
         } finally {
-            jdbcTemplate.execute("UPDATE TEST SET status=FALSE WHERE id='testUser1'");
+            jdbcTemplate.execute("UPDATE TEST SET status=FALSE WHERE id='testuser1'");
             if (userTO != null) {
                 userService.delete(userTO.getKey());
             }
@@ -399,18 +395,18 @@ public class PullTaskITCase extends AbstractTaskITCase {
         // Check for SYNCOPE-1343
         assertEquals("odd", matchingUsers.getResult().get(0).getPlainAttr("title").get().getValues().get(0));
 
-        GroupTO groupTO = matchingGroups.getResult().iterator().next();
+        GroupTO groupTO = matchingGroups.getResult().get(0);
         assertNotNull(groupTO);
         assertEquals("testLDAPGroup", groupTO.getName());
         assertEquals("true", groupTO.getPlainAttr("show").get().getValues().get(0));
-        assertEquals(matchingUsers.getResult().iterator().next().getKey(), groupTO.getUserOwner());
+        assertEquals(matchingUsers.getResult().get(0).getKey(), groupTO.getUserOwner());
         assertNull(groupTO.getGroupOwner());
         // SYNCOPE-1343, set value title to null on LDAP
         ConnObjectTO userConnObject = resourceService.readConnObject(
                 RESOURCE_NAME_LDAP, AnyTypeKind.USER.name(), matchingUsers.getResult().get(0).getKey());
         assertNotNull(userConnObject);
         assertEquals("odd", userConnObject.getAttr("title").get().getValues().get(0));
-        AttrTO userDn = userConnObject.getAttr(Name.NAME).get();
+        Attr userDn = userConnObject.getAttr(Name.NAME).get();
         updateLdapRemoteObject(RESOURCE_LDAP_ADMIN_DN, RESOURCE_LDAP_ADMIN_PWD,
                 userDn.getValues().get(0), Collections.singletonMap("title", (String) null));
 
@@ -451,7 +447,7 @@ public class PullTaskITCase extends AbstractTaskITCase {
         ConnObjectTO groupConnObject = resourceService.readConnObject(
                 RESOURCE_NAME_LDAP, AnyTypeKind.GROUP.name(), matchingGroups.getResult().get(0).getKey());
         assertNotNull(groupConnObject);
-        AttrTO groupDn = groupConnObject.getAttr(Name.NAME).get();
+        Attr groupDn = groupConnObject.getAttr(Name.NAME).get();
         updateLdapRemoteObject(RESOURCE_LDAP_ADMIN_DN, RESOURCE_LDAP_ADMIN_PWD,
                 groupDn.getValues().get(0), Collections.singletonMap("uniquemember", "uid=admin,ou=system"));
 
@@ -495,7 +491,7 @@ public class PullTaskITCase extends AbstractTaskITCase {
         ImplementationTO transformer = new ImplementationTO();
         transformer.setKey("PrefixItemTransformer");
         transformer.setEngine(ImplementationEngine.GROOVY);
-        transformer.setType(ImplementationType.ITEM_TRANSFORMER);
+        transformer.setType(IdMImplementationType.ITEM_TRANSFORMER);
         transformer.setBody(IOUtils.toString(
                 getClass().getResourceAsStream("/PrefixItemTransformer.groovy"), StandardCharsets.UTF_8));
         Response response = implementationService.create(transformer);
@@ -518,12 +514,11 @@ public class PullTaskITCase extends AbstractTaskITCase {
                     UUID.randomUUID().toString(), "Mysterious Printer", "Nowhere", true, new Date());
 
             // 1. create printer on external resource
-            AnyObjectTO anyObjectTO = AnyObjectITCase.getSampleTO("pull");
+            AnyObjectCR anyObjectCR = AnyObjectITCase.getSample("pull");
+            AnyObjectTO anyObjectTO = createAnyObject(anyObjectCR).getEntity();
+            assertNotNull(anyObjectTO);
             String originalLocation = anyObjectTO.getPlainAttr("location").get().getValues().get(0);
             assertFalse(originalLocation.startsWith(prefix));
-
-            anyObjectTO = createAnyObject(anyObjectTO).getEntity();
-            assertNotNull(anyObjectTO);
 
             // 2. verify that PrefixMappingItemTransformer was applied during propagation
             // (location starts with given prefix on external resource)
@@ -539,7 +534,7 @@ public class PullTaskITCase extends AbstractTaskITCase {
                                     is("location").equalTo("pull*").query()).build());
             assertTrue(matchingPrinters.getSize() > 0);
             for (AnyObjectTO printer : matchingPrinters.getResult()) {
-                anyObjectService.deassociate(new DeassociationPatch.Builder().key(printer.getKey()).
+                anyObjectService.deassociate(new ResourceDR.Builder().key(printer.getKey()).
                         action(ResourceDeassociationAction.UNLINK).resource(RESOURCE_NAME_DBSCRIPTED).build());
                 anyObjectService.delete(printer.getKey());
             }
@@ -586,7 +581,7 @@ public class PullTaskITCase extends AbstractTaskITCase {
             ImplementationTO reconFilterBuilder = new ImplementationTO();
             reconFilterBuilder.setKey("TestReconFilterBuilder");
             reconFilterBuilder.setEngine(ImplementationEngine.GROOVY);
-            reconFilterBuilder.setType(ImplementationType.RECON_FILTER_BUILDER);
+            reconFilterBuilder.setType(IdMImplementationType.RECON_FILTER_BUILDER);
             reconFilterBuilder.setBody(IOUtils.toString(
                     getClass().getResourceAsStream("/TestReconFilterBuilder.groovy"), StandardCharsets.UTF_8));
             Response response = implementationService.create(reconFilterBuilder);
@@ -766,22 +761,22 @@ public class PullTaskITCase extends AbstractTaskITCase {
             assertTrue(remediation.isPresent());
             assertEquals(AnyTypeKind.USER.name(), remediation.get().getAnyType());
             assertEquals(ResourceOperation.CREATE, remediation.get().getOperation());
-            assertNotNull(remediation.get().getAnyTOPayload());
-            assertNull(remediation.get().getAnyPatchPayload());
+            assertNotNull(remediation.get().getAnyCRPayload());
+            assertNull(remediation.get().getAnyURPayload());
             assertNull(remediation.get().getKeyPayload());
             assertTrue(remediation.get().getError().contains("RequiredValuesMissing [userId]"));
 
             // 4. remedy by copying the email value to userId
-            UserTO user = (UserTO) remediation.get().getAnyTOPayload();
-            user.getResources().clear();
+            AnyCR userCR = remediation.get().getAnyCRPayload();
+            userCR.getResources().clear();
 
-            String email = user.getPlainAttr("email").get().getValues().get(0);
-            user.getPlainAttrs().add(new AttrTO.Builder().schema("userId").value(email).build());
+            String email = userCR.getPlainAttr("email").get().getValues().get(0);
+            userCR.getPlainAttrs().add(new Attr.Builder("userId").value(email).build());
 
-            remediationService.remedy(remediation.get().getKey(), user);
+            remediationService.remedy(remediation.get().getKey(), userCR);
 
             // 5. user is now found
-            user = userService.read("pullFromLDAP");
+            UserTO user = userService.read("pullFromLDAP");
             assertNotNull(user);
             assertEquals(email, user.getPlainAttr("userId").get().getValues().get(0));
 
@@ -802,25 +797,24 @@ public class PullTaskITCase extends AbstractTaskITCase {
         //-----------------------------
         // Create a new user ... it should be updated applying pull policy
         //-----------------------------
-        UserTO userTO = new UserTO();
-        userTO.setRealm(SyncopeConstants.ROOT_REALM);
-        userTO.setPassword("password123");
-        userTO.setUsername("testuser2");
+        UserCR userCR = new UserCR();
+        userCR.setRealm(SyncopeConstants.ROOT_REALM);
+        userCR.setPassword("password123");
+        userCR.setUsername("testuser2");
 
-        userTO.getPlainAttrs().add(attrTO("firstname", "testuser2"));
-        userTO.getPlainAttrs().add(attrTO("surname", "testuser2"));
-        userTO.getPlainAttrs().add(attrTO("ctype", "a type"));
-        userTO.getPlainAttrs().add(attrTO("fullname", "a type"));
-        userTO.getPlainAttrs().add(attrTO("userId", "testuser2@syncope.apache.org"));
-        userTO.getPlainAttrs().add(attrTO("email", "testuser2@syncope.apache.org"));
+        userCR.getPlainAttrs().add(attr("firstname", "testuser2"));
+        userCR.getPlainAttrs().add(attr("surname", "testuser2"));
+        userCR.getPlainAttrs().add(attr("ctype", "a type"));
+        userCR.getPlainAttrs().add(attr("fullname", "a type"));
+        userCR.getPlainAttrs().add(attr("userId", "testuser2@syncope.apache.org"));
+        userCR.getPlainAttrs().add(attr("email", "testuser2@syncope.apache.org"));
 
-        userTO.getResources().add(RESOURCE_NAME_NOPROPAGATION2);
-        userTO.getResources().add(RESOURCE_NAME_NOPROPAGATION4);
+        userCR.getResources().add(RESOURCE_NAME_NOPROPAGATION2);
+        userCR.getResources().add(RESOURCE_NAME_NOPROPAGATION4);
 
-        userTO.getMemberships().add(
-                new MembershipTO.Builder().group("bf825fe1-7320-4a54-bd64-143b5c18ab97").build());
+        userCR.getMemberships().add(new MembershipTO.Builder("bf825fe1-7320-4a54-bd64-143b5c18ab97").build());
 
-        userTO = createUser(userTO).getEntity();
+        UserTO userTO = createUser(userCR).getEntity();
         assertNotNull(userTO);
         assertEquals("testuser2", userTO.getUsername());
         assertEquals(1, userTO.getMemberships().size());
@@ -833,8 +827,7 @@ public class PullTaskITCase extends AbstractTaskITCase {
             //-----------------------------
             UserTO template = new UserTO();
 
-            template.getMemberships().add(
-                    new MembershipTO.Builder().group("b8d38784-57e7-4595-859a-076222644b55").build());
+            template.getMemberships().add(new MembershipTO.Builder("b8d38784-57e7-4595-859a-076222644b55").build());
 
             template.getResources().add(RESOURCE_NAME_NOPROPAGATION4);
             //-----------------------------
@@ -874,7 +867,7 @@ public class PullTaskITCase extends AbstractTaskITCase {
 
         // 1. populate the external table
         jdbcTemplate.execute("INSERT INTO testpull VALUES"
-                + "('" + id + "', 'issuesyncope230', 'Surname', false, 'syncope230@syncope.apache.org', NULL)");
+                + "('" + id + "', 'issuesyncope230', 'Surname230', false, 'syncope230@syncope.apache.org', NULL)");
 
         // 2. execute PullTask for resource-db-pull (table TESTPULL on external H2)
         execProvisioningTask(taskService, TaskType.PULL, "7c2242f4-14af-4ab5-af31-cdae23783655", 50, false);
@@ -906,13 +899,13 @@ public class PullTaskITCase extends AbstractTaskITCase {
         // -----------------------------
         ImplementationTO corrRule = null;
         try {
-            corrRule = implementationService.read(ImplementationType.PULL_CORRELATION_RULE, "TestPullRule");
+            corrRule = implementationService.read(IdMImplementationType.PULL_CORRELATION_RULE, "TestPullRule");
         } catch (SyncopeClientException e) {
             if (e.getType().getResponseStatus() == Response.Status.NOT_FOUND) {
                 corrRule = new ImplementationTO();
                 corrRule.setKey("TestPullRule");
                 corrRule.setEngine(ImplementationEngine.GROOVY);
-                corrRule.setType(ImplementationType.PULL_CORRELATION_RULE);
+                corrRule.setType(IdMImplementationType.PULL_CORRELATION_RULE);
                 corrRule.setBody(IOUtils.toString(
                         getClass().getResourceAsStream("/TestPullRule.groovy"), StandardCharsets.UTF_8));
                 Response response = implementationService.create(corrRule);
@@ -941,24 +934,24 @@ public class PullTaskITCase extends AbstractTaskITCase {
         Response response = taskService.create(TaskType.PULL, task);
         task = getObject(response.getLocation(), TaskService.class, PullTaskTO.class);
 
-        UserTO userTO = UserITCase.getUniqueSampleTO("s258_1@apache.org");
-        userTO.getResources().clear();
-        userTO.getResources().add(RESOURCE_NAME_WS2);
+        UserCR userCR = UserITCase.getUniqueSample("s258_1@apache.org");
+        userCR.getResources().clear();
+        userCR.getResources().add(RESOURCE_NAME_WS2);
 
-        createUser(userTO);
+        createUser(userCR);
 
-        userTO = UserITCase.getUniqueSampleTO("s258_2@apache.org");
-        userTO.getResources().clear();
-        userTO.getResources().add(RESOURCE_NAME_WS2);
+        userCR = UserITCase.getUniqueSample("s258_2@apache.org");
+        userCR.getResources().clear();
+        userCR.getResources().add(RESOURCE_NAME_WS2);
 
-        userTO = createUser(userTO).getEntity();
+        UserTO userTO = createUser(userCR).getEntity();
 
         // change email in order to unmatch the second user
-        UserPatch userPatch = new UserPatch();
-        userPatch.setKey(userTO.getKey());
-        userPatch.getPlainAttrs().add(attrAddReplacePatch("email", "s258@apache.org"));
+        UserUR userUR = new UserUR();
+        userUR.setKey(userTO.getKey());
+        userUR.getPlainAttrs().add(attrAddReplacePatch("email", "s258@apache.org"));
 
-        userService.update(userPatch);
+        userService.update(userUR);
 
         execProvisioningTask(taskService, TaskType.PULL, task.getKey(), 50, false);
 
@@ -975,11 +968,11 @@ public class PullTaskITCase extends AbstractTaskITCase {
         removeTestUsers();
 
         // create user with testdb resource
-        UserTO userTO = UserITCase.getUniqueSampleTO("syncope272@syncope.apache.org");
-        userTO.getResources().add(RESOURCE_NAME_TESTDB);
+        UserCR userCR = UserITCase.getUniqueSample("syncope272@syncope.apache.org");
+        userCR.getResources().add(RESOURCE_NAME_TESTDB);
 
-        ProvisioningResult<UserTO> result = createUser(userTO);
-        userTO = result.getEntity();
+        ProvisioningResult<UserTO> result = createUser(userCR);
+        UserTO userTO = result.getEntity();
         try {
             assertNotNull(userTO);
             assertEquals(1, result.getPropagationStatuses().size());
@@ -1001,16 +994,16 @@ public class PullTaskITCase extends AbstractTaskITCase {
 
     @Test
     public void issueSYNCOPE307() {
-        UserTO userTO = UserITCase.getUniqueSampleTO("s307@apache.org");
-        userTO.setUsername("test0");
-        userTO.getPlainAttr("firstname").get().getValues().clear();
-        userTO.getPlainAttr("firstname").get().getValues().add("nome0");
-        userTO.getAuxClasses().add("csv");
+        UserCR userCR = UserITCase.getUniqueSample("s307@apache.org");
+        userCR.setUsername("test0");
+        userCR.getPlainAttrs().removeIf(attr -> "firstname".equals(attr.getSchema()));
+        userCR.getPlainAttrs().add(attr("firstname", "nome0"));
+        userCR.getAuxClasses().add("csv");
 
-        userTO.getResources().clear();
-        userTO.getResources().add(RESOURCE_NAME_WS2);
+        userCR.getResources().clear();
+        userCR.getResources().add(RESOURCE_NAME_WS2);
 
-        userTO = createUser(userTO).getEntity();
+        UserTO userTO = createUser(userCR).getEntity();
         assertNotNull(userTO);
 
         userTO = userService.read(userTO.getKey());
@@ -1023,7 +1016,7 @@ public class PullTaskITCase extends AbstractTaskITCase {
         UserTO template = new UserTO();
         template.setPassword("'password123'");
         template.getResources().add(RESOURCE_NAME_DBVIRATTR);
-        template.getVirAttrs().add(attrTO("virtualdata", "'virtualvalue'"));
+        template.getVirAttrs().add(attr("virtualdata", "'virtualvalue'"));
 
         task.getTemplates().put(AnyTypeKind.USER.name(), template);
 
@@ -1046,10 +1039,10 @@ public class PullTaskITCase extends AbstractTaskITCase {
     @Test
     public void issueSYNCOPE313DB() throws Exception {
         // 1. create user in DB
-        UserTO user = UserITCase.getUniqueSampleTO("syncope313-db@syncope.apache.org");
-        user.setPassword("security123");
-        user.getResources().add(RESOURCE_NAME_TESTDB);
-        user = createUser(user).getEntity();
+        UserCR userCR = UserITCase.getUniqueSample("syncope313-db@syncope.apache.org");
+        userCR.setPassword("security123");
+        userCR.getResources().add(RESOURCE_NAME_TESTDB);
+        UserTO user = createUser(userCR).getEntity();
         assertNotNull(user);
         assertFalse(user.getResources().isEmpty());
 
@@ -1068,7 +1061,7 @@ public class PullTaskITCase extends AbstractTaskITCase {
         ImplementationTO pullActions = new ImplementationTO();
         pullActions.setKey(DBPasswordPullActions.class.getSimpleName());
         pullActions.setEngine(ImplementationEngine.JAVA);
-        pullActions.setType(ImplementationType.PULL_ACTIONS);
+        pullActions.setType(IdMImplementationType.PULL_ACTIONS);
         pullActions.setBody(DBPasswordPullActions.class.getName());
         Response response = implementationService.create(pullActions);
         pullActions = implementationService.read(
@@ -1118,19 +1111,19 @@ public class PullTaskITCase extends AbstractTaskITCase {
         try {
             // 1. create user in LDAP
             String oldCleanPassword = "security123";
-            user = UserITCase.getUniqueSampleTO("syncope313-ldap@syncope.apache.org");
-            user.setPassword(oldCleanPassword);
-            user.getResources().add(RESOURCE_NAME_LDAP);
-            user = createUser(user).getEntity();
+            UserCR userCR = UserITCase.getUniqueSample("syncope313-ldap@syncope.apache.org");
+            userCR.setPassword(oldCleanPassword);
+            userCR.getResources().add(RESOURCE_NAME_LDAP);
+            user = createUser(userCR).getEntity();
             assertNotNull(user);
             assertFalse(user.getResources().isEmpty());
 
             // 2. request to change password only on Syncope and not on LDAP
             String newCleanPassword = "new-security123";
-            UserPatch userPatch = new UserPatch();
-            userPatch.setKey(user.getKey());
-            userPatch.setPassword(new PasswordPatch.Builder().value(newCleanPassword).build());
-            user = updateUser(userPatch).getEntity();
+            UserUR userUR = new UserUR();
+            userUR.setKey(user.getKey());
+            userUR.setPassword(new PasswordPatch.Builder().value(newCleanPassword).build());
+            user = updateUser(userUR).getEntity();
 
             // 3. Check that the Syncope user now has the changed password
             Pair<Map<String, Set<String>>, UserTO> self =
@@ -1158,7 +1151,7 @@ public class PullTaskITCase extends AbstractTaskITCase {
             ImplementationTO pullActions = new ImplementationTO();
             pullActions.setKey(LDAPPasswordPullActions.class.getSimpleName());
             pullActions.setEngine(ImplementationEngine.JAVA);
-            pullActions.setType(ImplementationType.PULL_ACTIONS);
+            pullActions.setType(IdMImplementationType.PULL_ACTIONS);
             pullActions.setBody(LDAPPasswordPullActions.class.getName());
             Response response = implementationService.create(pullActions);
             pullActions = implementationService.read(
@@ -1213,9 +1206,9 @@ public class PullTaskITCase extends AbstractTaskITCase {
         GroupTO group = null;
         try {
             // 1. create group with resource for propagation
-            propagationGroup = GroupITCase.getBasicSampleTO("SYNCOPE1062");
-            propagationGroup.getResources().add(RESOURCE_NAME_DBPULL);
-            propagationGroup = createGroup(propagationGroup).getEntity();
+            GroupCR propagationGroupCR = GroupITCase.getBasicSample("SYNCOPE1062");
+            propagationGroupCR.getResources().add(RESOURCE_NAME_DBPULL);
+            propagationGroup = createGroup(propagationGroupCR).getEntity();
 
             // 2. create pull task for another resource, with user template assigning the group above
             pullTask = new PullTaskTO();
@@ -1229,8 +1222,8 @@ public class PullTaskITCase extends AbstractTaskITCase {
 
             UserTO template = new UserTO();
             template.getAuxClasses().add("minimal group");
-            template.getMemberships().add(new MembershipTO.Builder().group(propagationGroup.getKey()).build());
-            template.getPlainAttrs().add(attrTO("firstname", "'fixed'"));
+            template.getMemberships().add(new MembershipTO.Builder(propagationGroup.getKey()).build());
+            template.getPlainAttrs().add(attr("firstname", "'fixed'"));
             pullTask.getTemplates().put(AnyTypeKind.USER.name(), template);
 
             Response taskResponse = taskService.create(TaskType.PULL, pullTask);
@@ -1254,7 +1247,7 @@ public class PullTaskITCase extends AbstractTaskITCase {
                     resourceService.readConnObject(RESOURCE_NAME_LDAP, AnyTypeKind.USER.name(), user.getKey());
             assertNotNull(connObject);
             assertEquals("pullFromLDAP@syncope.apache.org", connObject.getAttr("mail").get().getValues().get(0));
-            AttrTO userDn = connObject.getAttr(Name.NAME).get();
+            Attr userDn = connObject.getAttr(Name.NAME).get();
             assertNotNull(userDn);
             assertEquals(1, userDn.getValues().size());
             assertNotNull(

@@ -21,9 +21,10 @@ version: '3.3'
 
 services:
    db:
-     image: mysql/mysql-server:5.7
+     image: mysql/mysql-server:8.0
      restart: always
      environment:
+       MYSQL_ROOT_PASSWORD: password
        MYSQL_DATABASE: syncope
        MYSQL_USER: syncope
        MYSQL_PASSWORD: syncope
@@ -31,40 +32,45 @@ services:
    syncope:
      depends_on:
        - db
-     image: apache/syncope:${syncope.version}
+     image: apache/syncope:${SYNCOPE_VERSION}
      ports:
        - "18080:8080"
      restart: always
      environment:
        DBMS: mysql
-       DB_URL: jdbc:mysql://db:3306/syncope?characterEncoding=UTF-8&relaxAutoCommit=true&useSSL=false
+       DB_URL: jdbc:mysql://db:3306/syncope?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=UTF-8
        DB_USER: syncope
        DB_PASSWORD: syncope
        DB_POOL_MAX: 10
        DB_POOL_MIN: 2
        OPENJPA_REMOTE_COMMIT: sjvm
+       KEYMASTER_ADDRESS: http://localhost:8080/syncope/rest/keymaster
+       KEYMASTER_USERNAME: ${KEYMASTER_USERNAME}
+       KEYMASTER_PASSWORD: ${KEYMASTER_PASSWORD}
+       SERVICE_DISCOVERY_ADDRESS: http://syncope:8080/syncope/rest/
 
    syncope-console:
      depends_on:
        - syncope
-     image: apache/syncope-console:${syncope.version}
+     image: apache/syncope-console:${SYNCOPE_VERSION}
      ports:
        - "28080:8080"
      restart: always
      environment:
-       CORE_SCHEME: http
-       CORE_HOST: syncope
-       CORE_PORT: 8080
+       KEYMASTER_ADDRESS: http://syncope:8080/syncope/rest/keymaster
+       KEYMASTER_USERNAME: ${KEYMASTER_USERNAME}
+       KEYMASTER_PASSWORD: ${KEYMASTER_PASSWORD}
+       SERVICE_DISCOVERY_ADDRESS: http://syncope-console:8080/syncope-console/
 
    syncope-enduser:
      depends_on:
        - syncope
-     image: apache/syncope-enduser:${syncope.version}
+     image: apache/syncope-enduser:${SYNCOPE_VERSION}
      ports:
        - "38080:8080"
      restart: always
      environment:
-       CORE_SCHEME: http
-       CORE_HOST: syncope
-       CORE_PORT: 8080
-       DOMAIN: Master
+       KEYMASTER_ADDRESS: http://syncope:8080/syncope/rest/keymaster
+       KEYMASTER_USERNAME: ${KEYMASTER_USERNAME}
+       KEYMASTER_PASSWORD: ${KEYMASTER_PASSWORD}
+       SERVICE_DISCOVERY_ADDRESS: http://syncope-enduser:8080/syncope-enduser/

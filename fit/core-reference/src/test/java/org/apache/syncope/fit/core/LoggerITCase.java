@@ -27,13 +27,16 @@ import static org.junit.jupiter.api.Assertions.fail;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.text.ParseException;
 import java.util.List;
 import java.util.Properties;
 import javax.ws.rs.core.Response;
 import javax.xml.ws.WebServiceException;
-import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.syncope.common.lib.SyncopeClientException;
 import org.apache.syncope.common.lib.log.EventCategory;
@@ -42,6 +45,7 @@ import org.apache.syncope.common.lib.log.LogStatement;
 import org.apache.syncope.common.lib.log.LoggerTO;
 import org.apache.syncope.common.lib.to.ConnInstanceTO;
 import org.apache.syncope.common.lib.to.ConnPoolConfTO;
+import org.apache.syncope.common.lib.to.PushTaskTO;
 import org.apache.syncope.common.lib.to.ResourceTO;
 import org.apache.syncope.common.lib.types.AnyTypeKind;
 import org.apache.syncope.common.lib.types.AuditElements;
@@ -49,7 +53,9 @@ import org.apache.syncope.common.lib.types.AuditElements.EventCategoryType;
 import org.apache.syncope.common.lib.types.AuditLoggerName;
 import org.apache.syncope.common.lib.types.LoggerLevel;
 import org.apache.syncope.common.lib.types.LoggerType;
+import org.apache.syncope.common.lib.types.MatchingRule;
 import org.apache.syncope.common.lib.types.ResourceOperation;
+import org.apache.syncope.common.lib.types.UnmatchingRule;
 import org.apache.syncope.common.rest.api.LoggerWrapper;
 import org.apache.syncope.core.logic.ConnectorLogic;
 import org.apache.syncope.core.logic.ReportLogic;
@@ -243,41 +249,64 @@ public class LoggerITCase extends AbstractITCase {
         assertTrue(found);
     }
 
+    private boolean logFileContains(final Path path, final String message, final int maxWaitSeconds)
+            throws IOException {
+
+        int i = 0;
+        boolean messagePresent = false;
+        do {
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+            }
+
+            String auditLog = Files.readString(path, StandardCharsets.UTF_8);
+            messagePresent = auditLog.contains(message);
+
+            i++;
+        } while (!messagePresent && i < maxWaitSeconds);
+        return messagePresent;
+    }
+
     @Test
     public void customAuditAppender() throws IOException, InterruptedException {
-        try (InputStream propStream = getClass().getResourceAsStream("/core-test.properties")) {
+        AuditLoggerName auditLoggerResUpd = new AuditLoggerName(
+                EventCategoryType.LOGIC,
+                ResourceLogic.class.getSimpleName(),
+                null,
+                "update",
+                AuditElements.Result.SUCCESS);
+        LoggerTO resUpd = new LoggerTO();
+        resUpd.setKey(auditLoggerResUpd.toLoggerName());
+
+        AuditLoggerName auditLoggerConnUpd = new AuditLoggerName(
+                EventCategoryType.LOGIC,
+                ConnectorLogic.class.getSimpleName(),
+                null,
+                "update",
+                AuditElements.Result.SUCCESS);
+        LoggerTO connUpd = new LoggerTO();
+        connUpd.setKey(auditLoggerConnUpd.toLoggerName());
+
+        try (InputStream propStream = getClass().getResourceAsStream("/test.properties")) {
             Properties props = new Properties();
             props.load(propStream);
 
-            String auditFilePath = props.getProperty("test.log.dir")
-                    + File.separator + "audit_for_Master_file.log";
-            String auditNoRewriteFilePath = props.getProperty("test.log.dir")
-                    + File.separator + "audit_for_Master_norewrite_file.log";
-            // 1. Enable audit for resource update -> catched by FileRewriteAuditAppender
-            AuditLoggerName auditLoggerResUpd = new AuditLoggerName(
-                    EventCategoryType.LOGIC,
-                    ResourceLogic.class.getSimpleName(),
-                    null,
-                    "update",
-                    AuditElements.Result.SUCCESS);
+            Path auditFilePath = Paths.get(props.getProperty("test.log.dir")
+                    + File.separator + "audit_for_Master_file.log");
+            Files.write(auditFilePath, new byte[0], StandardOpenOption.TRUNCATE_EXISTING);
 
-            LoggerTO loggerTOUpd = new LoggerTO();
-            loggerTOUpd.setKey(auditLoggerResUpd.toLoggerName());
-            loggerTOUpd.setLevel(LoggerLevel.DEBUG);
-            loggerService.update(LoggerType.AUDIT, loggerTOUpd);
+            Path auditNoRewriteFilePath = Paths.get(props.getProperty("test.log.dir")
+                    + File.separator + "audit_for_Master_norewrite_file.log");
+            Files.write(auditNoRewriteFilePath, new byte[0], StandardOpenOption.TRUNCATE_EXISTING);
+
+            // 1. Enable audit for resource update -> catched by FileRewriteAuditAppender
+            resUpd.setLevel(LoggerLevel.DEBUG);
+            loggerService.update(LoggerType.AUDIT, resUpd);
 
             // 2. Enable audit for connector update -> NOT catched by FileRewriteAuditAppender
-            AuditLoggerName auditLoggerConnUpd = new AuditLoggerName(
-                    EventCategoryType.LOGIC,
-                    ConnectorLogic.class.getSimpleName(),
-                    null,
-                    "update",
-                    AuditElements.Result.SUCCESS);
-
-            LoggerTO loggerTOConnUpd = new LoggerTO();
-            loggerTOConnUpd.setKey(auditLoggerConnUpd.toLoggerName());
-            loggerTOConnUpd.setLevel(LoggerLevel.DEBUG);
-            loggerService.update(LoggerType.AUDIT, loggerTOConnUpd);
+            connUpd.setLevel(LoggerLevel.DEBUG);
+            loggerService.update(LoggerType.AUDIT, connUpd);
 
             // 3. check that resource update is transformed and logged onto an audit file.
             ResourceTO resource = resourceService.read(RESOURCE_NAME_CSV);
@@ -290,23 +319,18 @@ public class LoggerITCase extends AbstractITCase {
             connector.setPoolConf(new ConnPoolConfTO());
             connectorService.update(connector);
 
-            File auditTempFile = new File(auditFilePath);
             // check audit_for_Master_file.log, it should contain only a static message
-            String auditLog = FileUtils.readFileToString(auditTempFile, Charset.defaultCharset());
-
-            assertTrue(StringUtils.contains(auditLog,
+            assertTrue(logFileContains(auditFilePath,
                     "DEBUG Master.syncope.audit.[LOGIC]:[ResourceLogic]:[]:[update]:[SUCCESS]"
-                    + " - This is a static test message"));
-            File auditNoRewriteTempFile = new File(auditNoRewriteFilePath);
-            // check audit_for_Master_file.log, it should contain only a static message
-            String auditLogNoRewrite = FileUtils.readFileToString(auditNoRewriteTempFile, Charset.defaultCharset());
+                    + " - This is a static test message", 10));
 
-            assertFalse(StringUtils.contains(auditLogNoRewrite,
+            // nothing expected in audit_for_Master_norewrite_file.log instead
+            assertFalse(logFileContains(auditNoRewriteFilePath,
                     "DEBUG Master.syncope.audit.[LOGIC]:[ResourceLogic]:[]:[update]:[SUCCESS]"
-                    + " - This is a static test message"));
+                    + " - This is a static test message", 10));
 
             // clean audit_for_Master_file.log
-            FileUtils.writeStringToFile(auditTempFile, StringUtils.EMPTY, Charset.defaultCharset());
+            Files.write(auditFilePath, new byte[0], StandardOpenOption.TRUNCATE_EXISTING);
             loggerService.delete(LoggerType.AUDIT, "syncope.audit.[LOGIC]:[ResourceLogic]:[]:[update]:[SUCCESS]");
 
             resource = resourceService.read(RESOURCE_NAME_CSV);
@@ -315,9 +339,15 @@ public class LoggerITCase extends AbstractITCase {
             resourceService.update(resource);
 
             // check that nothing has been written to audit_for_Master_file.log
-            assertTrue(StringUtils.isEmpty(FileUtils.readFileToString(auditTempFile, Charset.defaultCharset())));
+            assertTrue(StringUtils.isEmpty(Files.readString(auditFilePath, StandardCharsets.UTF_8)));
         } catch (IOException e) {
-            fail("Unable to read/write log files" + e.getMessage());
+            fail("Unable to read/write log files", e);
+        } finally {
+            resUpd.setLevel(LoggerLevel.ERROR);
+            loggerService.update(LoggerType.AUDIT, resUpd);
+
+            connUpd.setLevel(LoggerLevel.ERROR);
+            loggerService.update(LoggerType.AUDIT, connUpd);
         }
     }
 
@@ -342,5 +372,82 @@ public class LoggerITCase extends AbstractITCase {
                 filter(object -> "UserLogic".equals(object.getCategory())).findAny().get();
         assertNotNull(userLogic);
         assertEquals(1, userLogic.getEvents().stream().filter(event -> "create".equals(event)).count());
+    }
+
+    @Test
+    public void issueSYNCOPE1446() {
+        AuditLoggerName createSuccess = new AuditLoggerName(
+                AuditElements.EventCategoryType.PROPAGATION,
+                AnyTypeKind.ANY_OBJECT.name().toLowerCase(),
+                RESOURCE_NAME_DBSCRIPTED,
+                "create",
+                AuditElements.Result.SUCCESS);
+        AuditLoggerName createFailure = new AuditLoggerName(
+                AuditElements.EventCategoryType.PROPAGATION,
+                AnyTypeKind.ANY_OBJECT.name().toLowerCase(),
+                RESOURCE_NAME_DBSCRIPTED,
+                "create",
+                AuditElements.Result.FAILURE);
+        AuditLoggerName updateSuccess = new AuditLoggerName(
+                AuditElements.EventCategoryType.PROPAGATION,
+                AnyTypeKind.ANY_OBJECT.name().toLowerCase(),
+                RESOURCE_NAME_DBSCRIPTED,
+                "update",
+                AuditElements.Result.SUCCESS);
+        AuditLoggerName updateFailure = new AuditLoggerName(
+                AuditElements.EventCategoryType.PROPAGATION,
+                AnyTypeKind.ANY_OBJECT.name().toLowerCase(),
+                RESOURCE_NAME_DBSCRIPTED,
+                "update",
+                AuditElements.Result.FAILURE);
+        try {
+            // 1. setup audit for propagation
+            LoggerTO loggerTO = new LoggerTO();
+            loggerTO.setKey(createSuccess.toLoggerName());
+            loggerTO.setLevel(LoggerLevel.DEBUG);
+            loggerService.update(LoggerType.AUDIT, loggerTO);
+
+            loggerTO.setKey(createFailure.toLoggerName());
+            loggerService.update(LoggerType.AUDIT, loggerTO);
+
+            loggerTO.setKey(updateSuccess.toLoggerName());
+            loggerService.update(LoggerType.AUDIT, loggerTO);
+
+            loggerTO.setKey(updateFailure.toLoggerName());
+            loggerService.update(LoggerType.AUDIT, loggerTO);
+
+            // 2. push on resource
+            PushTaskTO pushTask = new PushTaskTO();
+            pushTask.setPerformCreate(true);
+            pushTask.setPerformUpdate(true);
+            pushTask.setUnmatchingRule(UnmatchingRule.PROVISION);
+            pushTask.setMatchingRule(MatchingRule.UPDATE);
+            reconciliationService.push(
+                    AnyTypeKind.ANY_OBJECT, "fc6dbc3a-6c07-4965-8781-921e7401a4a5", RESOURCE_NAME_DBSCRIPTED, pushTask);
+        } catch (Exception e) {
+            LOG.error("Unexpected exception", e);
+            fail(e.getMessage());
+        } finally {
+            try {
+                loggerService.delete(LoggerType.AUDIT, createSuccess.toLoggerName());
+            } catch (Exception e) {
+                // ignore
+            }
+            try {
+                loggerService.delete(LoggerType.AUDIT, createFailure.toLoggerName());
+            } catch (Exception e) {
+                // ignore
+            }
+            try {
+                loggerService.delete(LoggerType.AUDIT, updateSuccess.toLoggerName());
+            } catch (Exception e) {
+                // ignore
+            }
+            try {
+                loggerService.delete(LoggerType.AUDIT, updateFailure.toLoggerName());
+            } catch (Exception e) {
+                // ignore
+            }
+        }
     }
 }

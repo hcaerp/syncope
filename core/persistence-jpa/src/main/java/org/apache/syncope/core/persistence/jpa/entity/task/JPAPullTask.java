@@ -33,8 +33,9 @@ import javax.persistence.ManyToMany;
 import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
 import javax.persistence.OneToOne;
+import javax.persistence.UniqueConstraint;
 import javax.validation.constraints.NotNull;
-import org.apache.syncope.common.lib.types.ImplementationType;
+import org.apache.syncope.common.lib.types.IdMImplementationType;
 import org.apache.syncope.common.lib.types.PullMode;
 import org.apache.syncope.core.persistence.api.entity.AnyType;
 import org.apache.syncope.core.persistence.api.entity.Implementation;
@@ -65,7 +66,9 @@ public class JPAPullTask extends AbstractProvisioningTask implements PullTask {
             joinColumns =
             @JoinColumn(name = "task_id"),
             inverseJoinColumns =
-            @JoinColumn(name = "implementation_id"))
+            @JoinColumn(name = "implementation_id"),
+            uniqueConstraints =
+            @UniqueConstraint(columnNames = { "task_id", "implementation_id" }))
     private List<JPAImplementation> actions = new ArrayList<>();
 
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER, mappedBy = "pullTask")
@@ -92,7 +95,7 @@ public class JPAPullTask extends AbstractProvisioningTask implements PullTask {
     @Override
     public void setReconFilterBuilder(final Implementation reconFilterBuilder) {
         checkType(reconFilterBuilder, JPAImplementation.class);
-        checkImplementationType(reconFilterBuilder, ImplementationType.RECON_FILTER_BUILDER);
+        checkImplementationType(reconFilterBuilder, IdMImplementationType.RECON_FILTER_BUILDER);
         this.reconFilterBuilder = (JPAImplementation) reconFilterBuilder;
     }
 
@@ -110,7 +113,7 @@ public class JPAPullTask extends AbstractProvisioningTask implements PullTask {
     @Override
     public boolean add(final Implementation action) {
         checkType(action, JPAImplementation.class);
-        checkImplementationType(action, ImplementationType.PULL_ACTIONS);
+        checkImplementationType(action, IdMImplementationType.PULL_ACTIONS);
         return actions.contains((JPAImplementation) action) || actions.add((JPAImplementation) action);
     }
 

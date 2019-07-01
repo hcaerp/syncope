@@ -26,8 +26,6 @@ import java.util.TreeSet;
 
 public final class FlowableEntitlement {
 
-    public static final String BPMN_PROCESS_LIST = "BPMN_PROCESS_LIST";
-
     public static final String BPMN_PROCESS_GET = "BPMN_PROCESS_GET";
 
     public static final String BPMN_PROCESS_SET = "BPMN_PROCESS_SET";
@@ -41,6 +39,8 @@ public final class FlowableEntitlement {
     public static final String USER_REQUEST_FORM_LIST = "USER_REQUEST_FORM_LIST";
 
     public static final String USER_REQUEST_FORM_CLAIM = "USER_REQUEST_FORM_CLAIM";
+
+    public static final String USER_REQUEST_FORM_UNCLAIM = "USER_REQUEST_FORM_UNCLAIM";
 
     public static final String USER_REQUEST_FORM_SUBMIT = "USER_REQUEST_FORM_SUBMIT";
 

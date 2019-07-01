@@ -77,8 +77,10 @@ under the License.
   </profiles>
 
   <modules>
-    <module>lib</module>
-    <module>rest-api</module>
+    <module>keymaster</module>
+    <module>idrepo</module>
+    <module>idm</module>
+    <module>am</module>
   </modules>
 
 </project>

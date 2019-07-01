@@ -48,37 +48,64 @@ under the License.
 
   <dependencyManagement>
     <dependencies>
-      <dependency>  
-        <groupId>org.apache.syncope.common</groupId>
-        <artifactId>syncope-common-lib</artifactId>
+      <dependency>
+        <groupId>org.apache.syncope.common.idm</groupId>
+        <artifactId>syncope-common-idm-lib</artifactId>
         <version>${syncope.version}</version>
       </dependency>
       
       <dependency>
         <groupId>org.apache.syncope.core</groupId>
-        <artifactId>syncope-core-rest-cxf</artifactId>
+        <artifactId>syncope-core-starter</artifactId>
         <version>${syncope.version}</version>
       </dependency>
       <dependency>
-        <groupId>org.apache.syncope.core</groupId>
-        <artifactId>syncope-core-workflow-java</artifactId>
+        <groupId>org.apache.syncope.core.idm</groupId>
+        <artifactId>syncope-core-idm-rest-cxf</artifactId>
         <version>${syncope.version}</version>
       </dependency>
       <dependency>
-        <groupId>org.apache.syncope.core</groupId>
-        <artifactId>syncope-core-persistence-jpa</artifactId>
-        <version>${syncope.version}</version>
-      </dependency>
-        
-      <dependency>
-        <groupId>org.apache.syncope.client</groupId>
-        <artifactId>syncope-client-console</artifactId>
+        <groupId>org.apache.syncope.core.am</groupId>
+        <artifactId>syncope-core-am-rest-cxf</artifactId>
         <version>${syncope.version}</version>
       </dependency>
 
       <dependency>
-        <groupId>org.apache.syncope.client</groupId>
-        <artifactId>syncope-client-enduser</artifactId>
+        <groupId>org.apache.syncope.client.idm</groupId>
+        <artifactId>syncope-client-idm-console</artifactId>
+        <version>${syncope.version}</version>
+      </dependency>
+
+      <dependency>
+        <groupId>org.apache.syncope.client.idrepo</groupId>
+        <artifactId>syncope-client-idrepo-enduser</artifactId>
+        <version>${syncope.version}</version>
+      </dependency>
+
+      <dependency>
+        <groupId>org.apache.syncope</groupId>
+        <artifactId>syncope-sra</artifactId>
+        <version>${syncope.version}</version>
+      </dependency>
+
+      <dependency>
+        <groupId>org.apache.syncope.ext.self-keymaster</groupId>
+        <artifactId>syncope-ext-self-keymaster-rest-cxf</artifactId>
+        <version>${syncope.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.syncope.ext.self-keymaster</groupId>
+        <artifactId>syncope-ext-self-keymaster-persistence-jpa</artifactId>
+        <version>${syncope.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.syncope.common.keymaster</groupId>
+        <artifactId>syncope-common-keymaster-client-zookeeper</artifactId>
+        <version>${syncope.version}</version>
+      </dependency>        
+      <dependency>
+        <groupId>org.apache.syncope.ext.self-keymaster</groupId>
+        <artifactId>syncope-ext-self-keymaster-client</artifactId>
         <version>${syncope.version}</version>
       </dependency>
     </dependencies>
@@ -107,6 +134,8 @@ under the License.
     <module>core</module>
     <module>console</module>
     <module>enduser</module>
+    <module>sra</module>
+    <module>fit</module>
   </modules>
 
 </project>

@@ -24,6 +24,7 @@ import java.util.Set;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.syncope.common.lib.to.AnyTO;
 import org.apache.syncope.common.lib.to.RealmTO;
+import org.apache.syncope.common.lib.types.AttrSchemaType;
 import org.apache.syncope.core.persistence.api.entity.Any;
 import org.apache.syncope.core.persistence.api.entity.PlainAttrValue;
 import org.apache.syncope.core.persistence.api.entity.Realm;
@@ -58,10 +59,12 @@ public interface MappingManager {
      * @param provision provision information
      * @param mapItem mapping item
      * @param intAttrName int attr name
+     * @param schemaType schema type
      * @param any any object
-     * @return attribute values.
+     * @return attribute values and their type
      */
-    List<PlainAttrValue> getIntValues(Provision provision, Item mapItem, IntAttrName intAttrName, Any<?> any);
+    Pair<AttrSchemaType, List<PlainAttrValue>> getIntValues(
+            Provision provision, Item mapItem, IntAttrName intAttrName, AttrSchemaType schemaType, Any<?> any);
 
     /**
      * Prepare attribute for sending to a connector instance.
@@ -116,4 +119,12 @@ public interface MappingManager {
      * @param realmTO realm
      */
     void setIntValues(Item orgUnitItem, Attribute attr, RealmTO realmTO);
+
+    /**
+     * Checks if there is a mapping item in the given {@link Provision} for {@code mustChangePassword}.
+     *
+     * @param provision provision
+     * @return if there is a mapping item in the given provision for {@code mustChangePassword}
+     */
+    boolean hasMustChangePassword(Provision provision);
 }

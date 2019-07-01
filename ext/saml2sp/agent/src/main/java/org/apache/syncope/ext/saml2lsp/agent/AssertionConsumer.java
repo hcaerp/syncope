@@ -24,16 +24,15 @@ import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import javax.servlet.ServletException;
-import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.syncope.client.lib.SyncopeClient;
-import org.apache.syncope.common.lib.to.AttrTO;
+import org.apache.syncope.common.lib.Attr;
 import org.apache.syncope.common.lib.to.SAML2LoginResponseTO;
 import org.apache.syncope.common.rest.api.service.SAML2SPService;
+import org.springframework.context.ApplicationContext;
 
-@WebServlet(name = "assertionConsumer", urlPatterns = { "/saml2sp/assertion-consumer" })
 public class AssertionConsumer extends AbstractSAML2SPServlet {
 
     private static final long serialVersionUID = 968480296813639041L;
@@ -41,12 +40,30 @@ public class AssertionConsumer extends AbstractSAML2SPServlet {
     private static final ObjectMapper MAPPER =
             new ObjectMapper().setSerializationInclusion(JsonInclude.Include.NON_EMPTY);
 
+    private final String anonymousUser;
+
+    private final String anonymousKey;
+
+    private final boolean useGZIPCompression;
+
+    public AssertionConsumer(
+            final ApplicationContext ctx,
+            final String anonymousUser,
+            final String anonymousKey,
+            final boolean useGZIPCompression) {
+
+        super(ctx);
+        this.anonymousUser = anonymousUser;
+        this.anonymousKey = anonymousKey;
+        this.useGZIPCompression = useGZIPCompression;
+    }
+
     @Override
     protected void doPost(final HttpServletRequest request, final HttpServletResponse response)
             throws ServletException, IOException {
 
-        SyncopeClient anonymous = (SyncopeClient) request.getServletContext().
-                getAttribute(Constants.SYNCOPE_ANONYMOUS_CLIENT);
+        SyncopeClient anonymous =
+                getAnonymousClient(request.getServletContext(), anonymousUser, anonymousKey, useGZIPCompression);
         try {
             SAML2LoginResponseTO responseTO = anonymous.getService(SAML2SPService.class).
                     validateLoginResponse(extract(
@@ -56,8 +73,7 @@ public class AssertionConsumer extends AbstractSAML2SPServlet {
                             request.getInputStream()));
 
             if (responseTO.isSelfReg()) {
-                responseTO.getAttrs().add(
-                        new AttrTO.Builder().schema("username").values(responseTO.getUsername()).build());
+                responseTO.getAttrs().add(new Attr.Builder("username").values(responseTO.getUsername()).build());
                 request.getSession(true).
                         setAttribute(Constants.SAML2SP_USER_ATTRS, MAPPER.writeValueAsString(responseTO.getAttrs()));
 
@@ -94,7 +110,7 @@ public class AssertionConsumer extends AbstractSAML2SPServlet {
                 e.printStackTrace(response.getWriter());
             } else {
                 response.sendRedirect(errorURL + "?errorMessage="
-                        + URLEncoder.encode(e.getMessage(), StandardCharsets.UTF_8.name()));
+                        + URLEncoder.encode(e.getMessage(), StandardCharsets.UTF_8));
             }
         }
     }

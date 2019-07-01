@@ -20,7 +20,7 @@ under the License.
 <configuration status="WARN">
 
   <appenders>
-    
+
     <RollingRandomAccessFile name="mainFile" fileName="${log.directory}/core.log"
                              filePattern="${log.directory}/core-%d{yyyy-MM-dd}.log.gz"
                              immediateFlush="false" append="true">
@@ -85,6 +85,10 @@ under the License.
       <appender-ref ref="persistenceFile"/>
       <appender-ref ref="persistence"/>
     </asyncLogger>
+    <asyncLogger name="org.apache.openjpa" additivity="false" level="INFO">
+      <appender-ref ref="persistenceFile"/>
+      <appender-ref ref="persistence"/>
+    </asyncLogger>
     <asyncLogger name="org.apache.ibatis" additivity="false" level="INFO">
       <appender-ref ref="persistenceFile"/>
       <appender-ref ref="persistence"/>
@@ -103,6 +107,10 @@ under the License.
       <appender-ref ref="rest"/>
     </asyncLogger>
     <asyncLogger name="org.apache.cxf" additivity="false" level="ERROR">
+      <appender-ref ref="restFile"/>
+      <appender-ref ref="rest"/>
+    </asyncLogger>
+    <asyncLogger name="org.apache.syncope.ext.self.keymaster" additivity="false" level="ERROR">
       <appender-ref ref="restFile"/>
       <appender-ref ref="rest"/>
     </asyncLogger>
@@ -185,6 +193,14 @@ under the License.
       <appender-ref ref="main"/>
     </asyncLogger>
     <asyncLogger name="com.zaxxer.hikari" additivity="false" level="ERROR">
+      <appender-ref ref="mainFile"/>
+      <appender-ref ref="main"/>
+    </asyncLogger>
+    <asyncLogger name="org.apache.zookeeper" additivity="false" level="ERROR">
+      <appender-ref ref="mainFile"/>
+      <appender-ref ref="main"/>
+    </asyncLogger>
+    <asyncLogger name="org.apache.curator" additivity="false" level="ERROR">
       <appender-ref ref="mainFile"/>
       <appender-ref ref="main"/>
     </asyncLogger>

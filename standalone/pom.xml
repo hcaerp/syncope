@@ -78,37 +78,30 @@ under the License.
   <build>
 
     <plugins>
-      <!-- Adds Flowable test content -->
       <plugin>
-        <groupId>org.codehaus.mojo</groupId>
-        <artifactId>xml-maven-plugin</artifactId>
+        <groupId>org.codehaus.cargo</groupId>
+        <artifactId>cargo-maven2-plugin</artifactId>
         <inherited>true</inherited>
+        <configuration>
+          <container>
+            <containerId>tomcat9x</containerId>
+            <zipUrlInstaller>
+              <url>http://central.maven.org/maven2/org/apache/tomcat/tomcat/${tomcat.version}/tomcat-${tomcat.version}.zip</url>
+              <downloadDir>${settings.localRepository}/org/codehaus/cargo/cargo-container-archives</downloadDir>
+              <extractDir>${project.build.directory}/cargo/extract</extractDir>
+            </zipUrlInstaller>
+            <timeout>300000</timeout>
+          </container>
+        </configuration>
         <executions>
           <execution>
+            <id>install-tomcat</id>
             <phase>prepare-package</phase>
             <goals>
-              <goal>transform</goal>
+              <goal>install</goal>
             </goals>
           </execution>
         </executions>
-        <configuration>
-          <transformationSets>
-            <transformationSet>
-              <dir>${project.build.directory}/classes/core</dir>
-              <includes>
-                <include>domains/MasterContent.xml</include>
-              </includes>
-              <outputDir>${project.build.directory}/classes/core</outputDir>
-              <stylesheet>${basedir}/../fit/core-reference/src/test/resources/addFlowableToContent.xsl</stylesheet>
-              <outputProperties>
-                <outputProperty>
-                  <name>indent</name>
-                  <value>yes</value>
-                </outputProperty>
-              </outputProperties>
-            </transformationSet>
-          </transformationSets>
-        </configuration>
       </plugin>
           
       <plugin>
@@ -170,8 +163,6 @@ under the License.
                 <copy todir="${work.dir}/apache-tomcat-${tomcat.version}/webapps/syncope-fit-build-tools/WEB-INF/lib">
                   <fileset dir="../fit/core-reference/target/bundles/" includes="**/*" />
                 </copy>
-                <zip destfile="${work.dir}/apache-tomcat-${tomcat.version}/webapps/syncope-fit-build-tools.war" basedir="${work.dir}/apache-tomcat-${tomcat.version}/webapps/syncope-fit-build-tools" />
-                <delete dir="${work.dir}/apache-tomcat-${tomcat.version}/webapps/syncope-fit-build-tools" />
 
                 <!-- Tomcat shared libraries: H2, StAX2 API, Woodstox -->
                 <copy file="${settings.localRepository}/com/h2database/h2/${h2.version}/h2-${h2.version}.jar" todir="${work.dir}/apache-tomcat-${tomcat.version}/lib" />
@@ -181,7 +172,7 @@ under the License.
                 </copy>
 
                 <!-- Other custom Tomcat resources -->
-                <copy file="../fit/core-reference/src/main/resources/context.xml" todir="${work.dir}/apache-tomcat-${tomcat.version}/conf" overwrite="true" />
+                <copy file="${project.build.outputDirectory}/context.xml" todir="${work.dir}/apache-tomcat-${tomcat.version}/conf" overwrite="true" />
                 <copy file="src/main/resources/setenv.sh" todir="${work.dir}/apache-tomcat-${tomcat.version}/bin" />
                 <copy file="src/main/resources/setenv.bat" todir="${work.dir}/apache-tomcat-${tomcat.version}/bin" />
                 <replace file="${work.dir}/apache-tomcat-${tomcat.version}/conf/server.xml" token="8080" value="${cargo.servlet.port}" />
@@ -249,6 +240,14 @@ under the License.
         <includes>
           <include>*.xml</include>
           <include>*.properties</include>
+        </includes>
+        <targetPath>core</targetPath>
+        <filtering>true</filtering>
+      </resource>
+      <resource>
+        <directory>../fit/core-reference/src/test/resources</directory>
+        <includes>
+          <include>mail.properties</include>
         </includes>
         <targetPath>core</targetPath>
         <filtering>true</filtering>

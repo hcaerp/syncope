@@ -19,21 +19,20 @@
 package org.apache.syncope.core.logic.init;
 
 import org.apache.syncope.common.lib.scim.types.SCIMEntitlement;
-import org.apache.syncope.core.persistence.api.SyncopeLoader;
-import org.apache.syncope.core.provisioning.api.EntitlementsHolder;
+import org.apache.syncope.common.lib.types.EntitlementsHolder;
+import org.apache.syncope.core.persistence.api.SyncopeCoreLoader;
 import org.springframework.stereotype.Component;
 
 @Component
-public class SCIMLoader implements SyncopeLoader {
+public class SCIMLoader implements SyncopeCoreLoader {
 
     @Override
-    public Integer getPriority() {
+    public int getOrder() {
         return 1000;
     }
 
     @Override
     public void load() {
-        EntitlementsHolder.getInstance().init(SCIMEntitlement.values());
+        EntitlementsHolder.getInstance().addAll(SCIMEntitlement.values());
     }
-
 }

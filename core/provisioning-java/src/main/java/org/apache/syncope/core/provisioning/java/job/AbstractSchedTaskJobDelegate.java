@@ -107,6 +107,7 @@ public abstract class AbstractSchedTaskJobDelegate implements SchedTaskJobDelega
 
         if (!task.isActive()) {
             LOG.info("Task {} not active, aborting...", taskKey);
+            return;
         }
 
         TaskExec execution = entityFactory.newEntity(TaskExec.class);
@@ -138,6 +139,7 @@ public abstract class AbstractSchedTaskJobDelegate implements SchedTaskJobDelega
         status.set("Done");
 
         notificationManager.createTasks(
+                AuthContextUtils.getUsername(),
                 AuditElements.EventCategoryType.TASK,
                 this.getClass().getSimpleName(),
                 null,

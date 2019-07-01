@@ -35,6 +35,7 @@ import org.apache.syncope.client.lib.SyncopeClient;
 import org.apache.syncope.client.lib.SyncopeClientFactoryBean;
 import org.apache.syncope.common.lib.SyncopeClientException;
 import org.apache.syncope.common.lib.SyncopeConstants;
+import org.apache.syncope.common.lib.request.UserCR;
 import org.apache.syncope.common.lib.to.ConnInstanceTO;
 import org.apache.syncope.common.lib.to.ItemTO;
 import org.apache.syncope.common.lib.to.MappingTO;
@@ -60,7 +61,6 @@ import org.apache.syncope.common.rest.api.beans.AnyQuery;
 import org.apache.syncope.common.rest.api.beans.SchemaQuery;
 import org.apache.syncope.common.rest.api.beans.TaskQuery;
 import org.apache.syncope.common.rest.api.service.ConnectorService;
-import org.apache.syncope.common.rest.api.service.DomainService;
 import org.apache.syncope.common.rest.api.service.LoggerService;
 import org.apache.syncope.common.rest.api.service.RealmService;
 import org.apache.syncope.common.rest.api.service.ReconciliationService;
@@ -70,42 +70,30 @@ import org.apache.syncope.common.rest.api.service.TaskService;
 import org.apache.syncope.common.rest.api.service.UserSelfService;
 import org.apache.syncope.common.rest.api.service.UserService;
 import org.apache.syncope.fit.AbstractITCase;
+import org.apache.syncope.fit.ElasticsearchDetector;
 import org.identityconnectors.framework.common.objects.ObjectClass;
-import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 public class MultitenancyITCase extends AbstractITCase {
 
-    @BeforeAll
-    public static void restSetup() {
-        if (!domainService.list().isEmpty()) {
-            clientFactory = new SyncopeClientFactoryBean().setAddress(ADDRESS).setDomain("Two");
-
-            String envContentType = System.getProperty(ENV_KEY_CONTENT_TYPE);
-            if (StringUtils.isNotBlank(envContentType)) {
-                clientFactory.setContentType(envContentType);
-            }
-            LOG.info("Performing IT with content type {}", clientFactory.getContentType().getMediaType());
-
-            adminClient = clientFactory.create(ADMIN_UNAME, "password2");
-        }
-    }
-
     @BeforeEach
     public void multitenancyCheck() {
-        assumeFalse(domainService.list().isEmpty());
+        assumeFalse(domainOps.list().isEmpty());
+
+        clientFactory = new SyncopeClientFactoryBean().setAddress(ADDRESS).setDomain("Two");
+
+        String envContentType = System.getProperty(ENV_KEY_CONTENT_TYPE);
+        if (StringUtils.isNotBlank(envContentType)) {
+            clientFactory.setContentType(envContentType);
+        }
+        LOG.info("Performing IT with content type {}", clientFactory.getContentType().getMediaType());
+
+        adminClient = clientFactory.create(ADMIN_UNAME, "password2");
     }
 
     @Test
     public void masterOnly() {
-        try {
-            adminClient.getService(DomainService.class).read("Two");
-            fail("This should not happen");
-        } catch (ForbiddenException e) {
-            assertNotNull(e);
-        }
-
         try {
             adminClient.getService(LoggerService.class).list(LoggerType.LOG);
             fail("This should not happen");
@@ -118,7 +106,7 @@ public class MultitenancyITCase extends AbstractITCase {
 
     @Test
     public void readPlainSchemas() {
-        assertEquals(12, adminClient.getService(SchemaService.class).
+        assertEquals(1, adminClient.getService(SchemaService.class).
                 search(new SchemaQuery.Builder().type(SchemaType.PLAIN).build()).size());
     }
 
@@ -133,15 +121,15 @@ public class MultitenancyITCase extends AbstractITCase {
     public void createUser() {
         assertNull(adminClient.getService(RealmService.class).list().get(0).getPasswordPolicy());
 
-        UserTO user = new UserTO();
-        user.setRealm(SyncopeConstants.ROOT_REALM);
-        user.setUsername(getUUIDString());
-        user.setPassword("password");
+        UserCR userCR = new UserCR();
+        userCR.setRealm(SyncopeConstants.ROOT_REALM);
+        userCR.setUsername(getUUIDString());
+        userCR.setPassword("password");
 
-        Response response = adminClient.getService(UserService.class).create(user, true);
+        Response response = adminClient.getService(UserService.class).create(userCR);
         assertEquals(Response.Status.CREATED.getStatusCode(), response.getStatus());
 
-        user = response.readEntity(new GenericType<ProvisioningResult<UserTO>>() {
+        UserTO user = response.readEntity(new GenericType<ProvisioningResult<UserTO>>() {
         }).getEntity();
         assertNotNull(user);
     }
@@ -227,6 +215,13 @@ public class MultitenancyITCase extends AbstractITCase {
             assertEquals(ExecStatus.SUCCESS, ExecStatus.valueOf(status));
 
             // verify that pulled user is found
+            if (ElasticsearchDetector.isElasticSearchEnabled(syncopeService)) {
+                try {
+                    Thread.sleep(2000);
+                } catch (InterruptedException ex) {
+                    // ignore
+                }
+            }
             PagedResult<UserTO> matchingUsers = adminClient.getService(UserService.class).search(new AnyQuery.Builder().
                     realm(SyncopeConstants.ROOT_REALM).
                     fiql(SyncopeClient.getUserSearchConditionBuilder().is("username").equalTo("pullFromLDAP").query()).
@@ -260,7 +255,7 @@ public class MultitenancyITCase extends AbstractITCase {
         try {
             new SyncopeClientFactoryBean().setAddress(ADDRESS).setDomain("NotExisting").create().
                     getService(UserSelfService.class).
-                    create(UserITCase.getUniqueSampleTO("syncope1377@syncope.apache.org"), true);
+                    create(UserITCase.getUniqueSample("syncope1377@syncope.apache.org"));
             fail("This should not happen");
         } catch (SyncopeClientException e) {
             assertEquals(ClientExceptionType.NotFound, e.getType());

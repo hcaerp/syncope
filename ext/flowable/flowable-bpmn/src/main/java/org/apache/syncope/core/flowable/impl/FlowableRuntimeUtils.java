@@ -26,7 +26,6 @@ import org.apache.commons.lang3.tuple.Pair;
 import org.apache.syncope.common.lib.SyncopeClientException;
 import org.apache.syncope.common.lib.to.UserTO;
 import org.apache.syncope.core.flowable.support.DomainProcessEngine;
-import org.apache.syncope.core.flowable.support.SyncopeTaskQueryImpl;
 import org.apache.syncope.core.persistence.api.attrvalue.validation.InvalidEntityException;
 import org.apache.syncope.core.persistence.api.attrvalue.validation.ParsingValidationException;
 import org.apache.syncope.core.persistence.api.entity.user.User;
@@ -34,11 +33,9 @@ import org.apache.syncope.core.provisioning.api.PropagationByResource;
 import org.apache.syncope.core.workflow.api.WorkflowException;
 import org.flowable.common.engine.api.FlowableException;
 import org.flowable.engine.history.HistoricActivityInstance;
-import org.flowable.engine.impl.RuntimeServiceImpl;
 import org.flowable.engine.repository.ProcessDefinition;
 import org.flowable.engine.runtime.ProcessInstance;
 import org.flowable.task.api.Task;
-import org.flowable.task.api.TaskQuery;
 import org.identityconnectors.common.security.EncryptorFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,11 +52,13 @@ public final class FlowableRuntimeUtils {
 
     public static final String FORM_SUBMITTER = "formSubmitter";
 
+    public static final String USER_CR = "userCR";
+
     public static final String USER_TO = "userTO";
 
     public static final String ENABLED = "enabled";
 
-    public static final String USER_PATCH = "userPatch";
+    public static final String USER_UR = "userUR";
 
     public static final String TASK = "task";
 
@@ -72,8 +71,6 @@ public final class FlowableRuntimeUtils {
     public static final String PROPAGATE_ENABLE = "propagateEnable";
 
     public static final String ENCRYPTED_PWD = "encryptedPwd";
-
-    public static final String STORE_PASSWORD = "storePassword";
 
     public static final String EVENT = "event";
 
@@ -131,7 +128,7 @@ public final class FlowableRuntimeUtils {
     }
 
     public static void updateStatus(final DomainProcessEngine engine, final String procInstId, final User user) {
-        List<Task> tasks = createTaskQuery(engine, false).processInstanceId(procInstId).list();
+        List<Task> tasks = engine.getTaskService().createTaskQuery().processInstanceId(procInstId).list();
         if (tasks.isEmpty() || tasks.size() > 1) {
             LOG.warn("While setting user status: unexpected task number ({})", tasks.size());
         } else {
@@ -139,19 +136,11 @@ public final class FlowableRuntimeUtils {
         }
     }
 
-    public static TaskQuery createTaskQuery(final DomainProcessEngine engine, final boolean onlyFormTasks) {
-        SyncopeTaskQueryImpl taskQuery = new SyncopeTaskQueryImpl(
-                ((RuntimeServiceImpl) engine.getRuntimeService()).getCommandExecutor());
-        if (onlyFormTasks) {
-            taskQuery.taskWithFormKey();
-        }
-        return taskQuery;
-    }
-
     public static String getFormTask(final DomainProcessEngine engine, final String procInstId) {
         String result = null;
 
-        List<Task> tasks = createTaskQuery(engine, true).processInstanceId(procInstId).list();
+        List<Task> tasks = engine.getTaskService().createTaskQuery().
+                taskWithFormKey().processInstanceId(procInstId).list();
         if (tasks.isEmpty() || tasks.size() > 1) {
             LOG.debug("While checking if form task: unexpected task number ({})", tasks.size());
         } else {
@@ -209,7 +198,9 @@ public final class FlowableRuntimeUtils {
     }
 
     public static void throwException(final FlowableException e, final String defaultMessage) {
-        if (e.getCause() instanceof SyncopeClientException) {
+        if (e.getCause() == null) {
+            throw new WorkflowException(defaultMessage, e);
+        } else if (e.getCause() instanceof SyncopeClientException) {
             throw (SyncopeClientException) e.getCause();
         } else if (e.getCause() instanceof ParsingValidationException) {
             throw (ParsingValidationException) e.getCause();

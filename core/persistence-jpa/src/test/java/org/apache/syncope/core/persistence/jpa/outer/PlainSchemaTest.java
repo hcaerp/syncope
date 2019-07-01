@@ -25,15 +25,14 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.persistence.EntityExistsException;
+import javax.persistence.TypedQuery;
 import org.apache.syncope.common.lib.SyncopeConstants;
 import org.apache.syncope.common.lib.types.AttrSchemaType;
-import org.apache.syncope.common.lib.types.StandardEntitlement;
+import org.apache.syncope.common.lib.types.IdRepoEntitlement;
 import org.apache.syncope.core.persistence.api.dao.AnyTypeDAO;
 import org.apache.syncope.core.persistence.api.dao.DerSchemaDAO;
 import org.apache.syncope.core.persistence.api.dao.ExternalResourceDAO;
@@ -41,11 +40,11 @@ import org.apache.syncope.core.persistence.api.dao.PlainSchemaDAO;
 import org.apache.syncope.core.persistence.api.dao.UserDAO;
 import org.apache.syncope.core.persistence.api.entity.PlainSchema;
 import org.apache.syncope.core.persistence.api.entity.SchemaLabel;
-import org.apache.syncope.core.persistence.api.entity.resource.ExternalResource;
 import org.apache.syncope.core.persistence.api.entity.resource.MappingItem;
 import org.apache.syncope.core.persistence.api.entity.user.UPlainAttr;
 import org.apache.syncope.core.persistence.jpa.AbstractTest;
 import org.apache.syncope.core.persistence.jpa.entity.JPASchemaLabel;
+import org.apache.syncope.core.persistence.jpa.entity.resource.JPAMappingItem;
 import org.apache.syncope.core.spring.security.SyncopeAuthenticationDetails;
 import org.apache.syncope.core.spring.security.SyncopeGrantedAuthority;
 import org.junit.jupiter.api.AfterAll;
@@ -77,7 +76,7 @@ public class PlainSchemaTest extends AbstractTest {
 
     @BeforeAll
     public static void setAuthContext() {
-        List<GrantedAuthority> authorities = StandardEntitlement.values().stream().
+        List<GrantedAuthority> authorities = IdRepoEntitlement.values().stream().
                 map(entitlement -> new SyncopeGrantedAuthority(entitlement, SyncopeConstants.ROOT_REALM)).
                 collect(Collectors.toList());
 
@@ -103,11 +102,19 @@ public class PlainSchemaTest extends AbstractTest {
         plainSchemaDAO.save(schema);
 
         try {
-            plainSchemaDAO.flush();
+            entityManager().flush();
             fail("This should not happen");
         } catch (Exception e) {
             assertTrue(e instanceof EntityExistsException || e.getCause() instanceof EntityExistsException);
         }
+    }
+
+    private List<MappingItem> getMappingItems(final String intAttrName) {
+        TypedQuery<MappingItem> mapItemsQuery = entityManager().createQuery(
+                "SELECT e FROM " + JPAMappingItem.class.getSimpleName() + " e WHERE e.intAttrName=:intAttrName",
+                MappingItem.class);
+        mapItemsQuery.setParameter("intAttrName", intAttrName);
+        return mapItemsQuery.getResultList();
     }
 
     @Test
@@ -129,24 +136,13 @@ public class PlainSchemaTest extends AbstractTest {
         assertNotNull(schema);
 
         // check for associated mappings
-        Set<MappingItem> mapItems = new HashSet<>();
-        for (ExternalResource resource : resourceDAO.findAll()) {
-            if (resource.getProvision(anyTypeDAO.findUser()).isPresent()
-                    && resource.getProvision(anyTypeDAO.findUser()).get().getMapping() != null) {
-
-                for (MappingItem mapItem : resource.getProvision(anyTypeDAO.findUser()).get().getMapping().getItems()) {
-                    if (schema.getKey().equals(mapItem.getIntAttrName())) {
-                        mapItems.add(mapItem);
-                    }
-                }
-            }
-        }
+        List<MappingItem> mapItems = getMappingItems("fullname");
         assertFalse(mapItems.isEmpty());
 
         // delete user schema fullname
         plainSchemaDAO.delete("fullname");
 
-        plainSchemaDAO.flush();
+        entityManager().flush();
 
         // check for schema deletion
         schema = plainSchemaDAO.find("fullname");
@@ -155,18 +151,7 @@ public class PlainSchemaTest extends AbstractTest {
         plainSchemaDAO.clear();
 
         // check for mappings deletion
-        mapItems = new HashSet<>();
-        for (ExternalResource resource : resourceDAO.findAll()) {
-            if (resource.getProvision(anyTypeDAO.findUser()).isPresent()
-                    && resource.getProvision(anyTypeDAO.findUser()).get().getMapping() != null) {
-
-                for (MappingItem mapItem : resource.getProvision(anyTypeDAO.findUser()).get().getMapping().getItems()) {
-                    if ("fullname".equals(mapItem.getIntAttrName())) {
-                        mapItems.add(mapItem);
-                    }
-                }
-            }
-        }
+        mapItems = getMappingItems("fullname");
         assertTrue(mapItems.isEmpty());
 
         assertNull(findPlainAttr("01f22fbd-b672-40af-b528-686d9b27ebc4", UPlainAttr.class));
@@ -177,24 +162,13 @@ public class PlainSchemaTest extends AbstractTest {
 
     @Test
     public void deleteSurname() {
-        // search for user schema fullname
+        // search for user schema surname
         PlainSchema schema = plainSchemaDAO.find("surname");
         assertNotNull(schema);
 
         // check for associated mappings
-        Set<MappingItem> mappings = new HashSet<>();
-        for (ExternalResource resource : resourceDAO.findAll()) {
-            if (resource.getProvision(anyTypeDAO.findUser()).isPresent()
-                    && resource.getProvision(anyTypeDAO.findUser()).get().getMapping() != null) {
-
-                for (MappingItem item : resource.getProvision(anyTypeDAO.findUser()).get().getMapping().getItems()) {
-                    if (schema.getKey().equals(item.getIntAttrName())) {
-                        mappings.add(item);
-                    }
-                }
-            }
-        }
-        assertFalse(mappings.isEmpty());
+        List<MappingItem> mapItems = getMappingItems("surname");
+        assertFalse(mapItems.isEmpty());
 
         // check for labels
         List<SchemaLabel> labels = entityManager().createQuery(
@@ -202,10 +176,10 @@ public class PlainSchemaTest extends AbstractTest {
         assertEquals(5, labels.size());
         assertEquals(2, schema.getLabels().size());
 
-        // delete user schema fullname
+        // delete user schema surname
         plainSchemaDAO.delete("surname");
 
-        plainSchemaDAO.flush();
+        entityManager().flush();
 
         // check for schema deletion
         schema = plainSchemaDAO.find("surname");
@@ -218,15 +192,13 @@ public class PlainSchemaTest extends AbstractTest {
 
     @Test
     public void deleteFirstname() {
-        assertEquals(6, resourceDAO.find("resource-db-pull").
-                getProvision(anyTypeDAO.findUser()).get().getMapping().getItems().size());
+        int pre = resourceDAO.find("resource-db-pull").
+                getProvision(anyTypeDAO.findUser()).get().getMapping().getItems().size();
 
         plainSchemaDAO.delete("firstname");
         assertNull(plainSchemaDAO.find("firstname"));
 
-        plainSchemaDAO.flush();
-
-        assertEquals(5, resourceDAO.find("resource-db-pull").
+        assertEquals(pre - 1, resourceDAO.find("resource-db-pull").
                 getProvision(anyTypeDAO.findUser()).get().getMapping().getItems().size());
     }
 }

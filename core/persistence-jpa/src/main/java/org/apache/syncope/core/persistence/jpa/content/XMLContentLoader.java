@@ -23,13 +23,16 @@ import java.io.InputStream;
 import java.util.Properties;
 import javax.annotation.Resource;
 import javax.sql.DataSource;
+import javax.xml.XMLConstants;
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.parsers.SAXParser;
 import javax.xml.parsers.SAXParserFactory;
+import org.apache.syncope.core.persistence.api.content.ContentLoader;
+import org.apache.syncope.core.persistence.jpa.entity.JPARealm;
 import org.apache.syncope.core.spring.ApplicationContextProvider;
 import org.apache.syncope.core.spring.ResourceWithFallbackLoader;
-import org.apache.syncope.core.persistence.api.content.ContentLoader;
-import org.apache.syncope.core.persistence.jpa.entity.conf.JPAConf;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.io.support.PropertiesLoaderUtils;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -41,7 +44,9 @@ import org.xml.sax.SAXException;
  * Initialize Database with default content if no data is present already.
  */
 @Component
-public class XMLContentLoader extends AbstractContentDealer implements ContentLoader {
+public class XMLContentLoader implements ContentLoader {
+
+    private static final Logger LOG = LoggerFactory.getLogger(XMLContentLoader.class);
 
     @Resource(name = "viewsXML")
     private ResourceWithFallbackLoader viewsXML;
@@ -50,60 +55,61 @@ public class XMLContentLoader extends AbstractContentDealer implements ContentLo
     private ResourceWithFallbackLoader indexesXML;
 
     @Override
-    public Integer getPriority() {
-        return 0;
+    public int getOrder() {
+        return 400;
     }
 
     @Override
-    public void load() {
-        domainsHolder.getDomains().forEach((domain, datasource) -> {
-            // create EntityManager so OpenJPA will build the SQL schema
-            EntityManagerFactoryUtils.findEntityManagerFactory(
-                    ApplicationContextProvider.getBeanFactory(), domain).createEntityManager();
+    public void load(final String domain, final DataSource datasource) {
+        LOG.debug("Loading data for domain [{}]", domain);
 
-            JdbcTemplate jdbcTemplate = new JdbcTemplate(datasource);
-            boolean existingData;
+        // create EntityManager so OpenJPA will build the SQL schema
+        EntityManagerFactoryUtils.findEntityManagerFactory(
+                ApplicationContextProvider.getBeanFactory(), domain).createEntityManager();
+
+        JdbcTemplate jdbcTemplate = new JdbcTemplate(datasource);
+        boolean existingData;
+        try {
+            existingData = jdbcTemplate.queryForObject("SELECT COUNT(0) FROM " + JPARealm.TABLE, Integer.class) > 0;
+        } catch (DataAccessException e) {
+            LOG.error("[{}] Could not access table " + JPARealm.TABLE, domain, e);
+            existingData = true;
+        }
+
+        if (existingData) {
+            LOG.info("[{}] Data found in the database, leaving untouched", domain);
+        } else {
+            LOG.info("[{}] Empty database found, loading default content", domain);
+
             try {
-                existingData = jdbcTemplate.queryForObject("SELECT COUNT(0) FROM " + JPAConf.TABLE, Integer.class) > 0;
-            } catch (DataAccessException e) {
-                LOG.error("[{}] Could not access to table " + JPAConf.TABLE, domain, e);
-                existingData = true;
+                createViews(domain, datasource);
+            } catch (IOException e) {
+                LOG.error("[{}] While creating views", domain, e);
             }
-
-            if (existingData) {
-                LOG.info("[{}] Data found in the database, leaving untouched", domain);
-            } else {
-                LOG.info("[{}] Empty database found, loading default content", domain);
-
-                try {
-                    createViews(domain, datasource);
-                } catch (IOException e) {
-                    LOG.error("[{}] While creating views", domain, e);
-                }
-                try {
-                    createIndexes(domain, datasource);
-                } catch (IOException e) {
-                    LOG.error("[{}] While creating indexes", domain, e);
-                }
-                try {
-                    ResourceWithFallbackLoader contentXML = ApplicationContextProvider.getBeanFactory().
-                            getBean(domain + "ContentXML", ResourceWithFallbackLoader.class);
-                    loadDefaultContent(domain, contentXML, datasource);
-                } catch (Exception e) {
-                    LOG.error("[{}] While loading default content", domain, e);
-                }
+            try {
+                createIndexes(domain, datasource);
+            } catch (IOException e) {
+                LOG.error("[{}] While creating indexes", domain, e);
             }
-        });
+            try {
+                InputStream contentXML = ApplicationContextProvider.getBeanFactory().
+                        getBean(domain + "ContentXML", InputStream.class);
+                loadDefaultContent(domain, contentXML, datasource);
+            } catch (Exception e) {
+                LOG.error("[{}] While loading default content", domain, e);
+            }
+        }
     }
 
     private void loadDefaultContent(
-            final String domain, final ResourceWithFallbackLoader contentXML, final DataSource dataSource)
+            final String domain, final InputStream contentXML, final DataSource dataSource)
             throws IOException, ParserConfigurationException, SAXException {
 
         SAXParserFactory factory = SAXParserFactory.newInstance();
-        try (InputStream in = contentXML.getResource().getInputStream()) {
+        factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, Boolean.TRUE);
+        try (contentXML) {
             SAXParser parser = factory.newSAXParser();
-            parser.parse(in, new ContentLoaderHandler(dataSource, ROOT_ELEMENT, true));
+            parser.parse(contentXML, new ContentLoaderHandler(dataSource, ROOT_ELEMENT, true));
             LOG.debug("[{}] Default content successfully loaded", domain);
         }
     }

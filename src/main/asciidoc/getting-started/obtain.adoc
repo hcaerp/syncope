@@ -120,7 +120,7 @@ $ cd /usr/share/tomcat8/lib/ && sudo wget http://central.maven.org/maven2/org/po
 [source,bash]
 ----
 JAVA_OPTS="-Djava.awt.headless=true -Dfile.encoding=UTF-8 -server \
-  -Xms1536m -Xmx1536m -XX:NewSize=256m -XX:MaxNewSize=256m -XX:PermSize=256m -XX:+DisableExplicitGC \
+  -Xms1536m -Xmx1536m -XX:NewSize=256m -XX:MaxNewSize=256m -XX:+DisableExplicitGC \
   -Djava.security.egd=file:/dev/./urandom"
 ----
 +
@@ -133,7 +133,10 @@ $ sudo service tomcat8 stop
 . Install Apache Syncope core, console and enduser via the downloaded packages
 +
 [source,bash]
-$ sudo dpkg -i apache-syncope-*.deb
+$ sudo dpkg -i --force-overwrite apache-syncope-*.deb
++
+[WARNING]
+The `--force-overwrite` shall be used only when installing two or more packages on the same host
 +
 . Create a database for use with Apache Syncope
 +
@@ -167,112 +170,6 @@ CAUTION: The following assumes that `protocol`, `host` and `port` reflect your A
 
 | Administration console
 | protocol://host:port/syncope-console/
-
-| End-user UI
-| protocol://host:port/syncope-enduser/
-
-|===
-
-=== GUI Installer
-
-GUI application for configuring and deploying Apache Syncope on supported
-<<internal-storage,DBMSes>> and <<java-ee-container, Java EE containers>>.
-
-[CAUTION]
-.Target Audience
-Getting up and running quickly on any supported DBMS and Java EE container, independently from the underlying
-operating system. +
-*Difficult to extend beyond pre-sets.*
-
-[[installer-prerequisites]]
-==== Prerequisites
-
- . http://maven.apache.org/[Apache Maven^] (version 3.0.3 or higher) installed
- . one of the supported <<internal-storage,DBMSes>> up and running, and an empty database instance for usage with
-Apache Syncope (you will be requested for JDBC URL, username and password)
- . one of the supported <<java-ee-container, Java EE containers>> up and running
- . a datasource with the name `syncopeMasterDataSource` configured in the selected Java EE container and the database
-instance mentioned above
-
-[WARNING]
-====
-Ensure that the `syncopeMasterDataSource` datasource is correctly configured before proceeding.
-
-The actual configuration steps vary significantly depending on the selected Java EE container; here are some
-examples:
-
-. https://tomcat.apache.org/tomcat-9.0-doc/jdbc-pool.html[Apache Tomcat 9^]
-. https://javaeesquad.github.io/tutorials/glassfishDatasource/glassFishDatasource.html[Glassfish 5^]
-. https://payara.gitbooks.io/payara-server/content/documentation/user-guides/connection-pools/connection-pools.html[Payara Server 5^]
-. http://docs.wildfly.org/14/Admin_Guide.html#DataSource[Wildfly 14^]
-====
-
-[WARNING]
-====
-When deploying on Apache Tomcat, don't forget to configure a `manager` user; if not done yet, ensure that the content
-of `$CATALINA_HOME/conf/tomcat-users.xml` looks like:
-
-[source,xml]
-<?xml version='1.0' encoding='utf-8'?>
-<tomcat-users>
-  <role rolename="manager-gui"/>
-  <role rolename="manager-script"/>
-  <role rolename="manager-jmx"/>
-  <role rolename="manager-status"/>
-  <user username="manager" password="s3cret" roles="manager-script"/>
-</tomcat-users>
-====
-
-==== Usage
-
-Once https://syncope.apache.org/downloads[downloaded^], double-click the JAR file or execute via the command-line:
-
-[source,bash]
-java -jar syncope-installer-*-uber.jar
-
-image::installer-1.png[installer-1]
-
-image::installer-2.png[installer-2]
-
-image::installer-3.png[installer-3]
-
-image::installer-4.png[installer-4]
-
-image::installer-5.png[installer-5]
-
-image::installer-6.png[installer-6]
-
-image::installer-7.png[installer-7]
-
-image::installer-8.png[installer-8]
-
-image::installer-9.png[installer-9]
-
-image::installer-10.png[installer-10]
-
-image::installer-11.png[installer-11]
-
-image::installer-12.png[installer-12]
-
-image::installer-13.png[installer-13]
-
-[[installer-components]]
-==== Components
-
-CAUTION: The following assumes that `protocol`, `host` and `port` reflect your Java EE container installation.
-
-[cols="1,2"]
-|===
-
-| Complete REST API reference
-| protocol://host:port/syncope/index.html
-
-| http://swagger.io/[Swagger^] UI
-| protocol://host:port/syncope/swagger/
-
-| Administration console
-| protocol://host:port/syncope-console/ +
-Credentials: `admin` / `password`
 
 | End-user UI
 | protocol://host:port/syncope-enduser/
@@ -340,7 +237,6 @@ Environment variables:
 * `CORE_SCHEME`: URL scheme to connect to Syncope Core; valid values are `http` or `https`
 * `CORE_HOST`: host name or IP address to connect to Syncope Core
 * `CORE_PORT`: port number to connect to Syncope Core
-* `DOMAIN`: Syncope Core's domain to work with
 
 ==== Docker Compose samples
 
@@ -409,7 +305,6 @@ services:
        CORE_SCHEME: http
        CORE_HOST: syncope
        CORE_PORT: 8080
-       DOMAIN: Master
 ----
 <1> Database container for usage as internal storage, based on latest PostgreSQL image available
 <2> Apache Syncope Core, single instance, port `18080` exposed
@@ -617,8 +512,8 @@ If no failures are encountered, your basic Apache Syncope project is now ready t
 
 [NOTE]
 ====
-Before actual deployment onto a standalone Java EE container, you need to further check the **Customization** chapter of
-the
+Before actual deployment as executbale or onto a Java EE container, you need to further check the **Customization**
+chapter of the
 ifeval::["{backend}" == "html5"]
 http://syncope.apache.org/docs/reference-guide.html[Apache Syncope Reference Guide.]
 endif::[]
@@ -688,7 +583,7 @@ Credentials: `admin` / `password`
 | http://localhost:9080/syncope-enduser/
 
 | Internal storage
-| A SQL web interface is available at http://localhost:9080/syncope/db.jsp +
+| A SQL web interface is available at http://localhost:9080/syncope/h2 +
  +
  Choose configuration 'Generic H2 (Embedded)' +
  Insert `jdbc:h2:mem:syncopedb` as JDBC URL +
@@ -721,241 +616,6 @@ You can configure any LDAP client (such as http://jxplorer.org/[JXplorer^], for 
  Click 'Connect' button
 
 |===
-
-=== CLI
-
-The command-line interface (CLI) client is an utility tool meant for interacting with Apache Syncope deployments from
-shell scripts.
-
-Once downloaded and uncompressed, you will find a `lib` directory and two scripts: `syncopeadm.sh` and `syncopeadm.bat`,
-which will be used depending on the operating system.
-
-The installation process creates `cli.properties`, which contains all the required information to invoke the Apache 
-Syncope REST API services.
-The file content looks like the following:
-
-....
-syncope.rest.services=http://localhost:9080/syncope/rest
-syncope.admin.user=admin
-syncope.admin.password=QePSFVTnzwQowM4ohhaUYcE6aW47MVZ/
-....
-
-where:
-
-syncope.rest.services::
-    the base URL where the Apache Syncope REST API services are listening;
-syncope.admin.user::
-    the username which will be used to invoke the Syncope APIs;
-syncope.admin.password::
-    the password for the admin user configured above.
-
-As shown above, the password value is encrypted for security reasons.
-
-[discrete]
-===== Help message
-[source,bash]
-----
-Usage: install [options]
-  Options:
-    --help 
-    --setup
-    --setup-debug
-----
-
-[[cli-installation]]
-==== Installation
-After the file is unzipped you can start with CLI client using the `syncopeadm` file.
-If you have tried to run a CLI command before the installation process, the script will return
-[source]
---
- - Error: It seems you need to first setup the CLI client. Run install --setup.
---
-
-So, as suggested, you have to run the install command to use the CLI:
-[source]
---
-$ ./syncopeadm.sh install --setup
---
-
-A successful result will be:
-[source,bash,subs="verbatim,attributes"]
-----
-
-You are running: install --setup 
-
-###############################################
-#                                             #
-# Welcome to Syncope CLI installation process #
-#                                             #
-###############################################
-
-Path to config files of Syncope CLI client will be: ./
-- File system permission checked
-
-Syncope server schema [http/https]: http
-Syncope server hostname [e.g. localhost]: localhost
-Syncope server port [e.g. 8080]: 9080
-Syncope server rest context [e.g. /syncope/rest/]: /syncope/rest
-Syncope admin user: admin
-Syncope admin password: password
-Installation parameters checked on Syncope core version: {docVersion}
-
-###############################################
-#                                             #
-#           Installation successful           #
-#     now you can use Syncope CLI client      #
-#                                             #
-###############################################
-
-----
-
-During the installation you have to provide:
-
-Syncope server schema::
-    the http protocol used by the Apache Syncope core, it will be http or https;
-Syncope server hostname::
-    the hostname where the core is deployed;
-Syncope server port::
-    the port where the services are listening;
-Syncope server rest context::
-    the context where the rest services are deployed (/syncope/rest is the default);
-Syncope admin user::
-    the user with the permission to call the Syncope APIs;
-Syncope admin password::
-    the user password.
-
-==== Troubleshooting
-Various error messages are possible on installation. Here are some sample error messages:
-
-===== Syncope unreachable (or wrong address):
-
-[source]
---
-
-Provided address: http://localhost:9080/syncope/rest
-
-###############################################
-#                                             #
-#       Provided address is unreachable!      #
-#         Check it and if it is wrong         #
-#        START the installation AGAIN!        #
-#                                             #
-###############################################
-
---
-
-===== Authentication failed:
-
-[source]
---
-
-###############################################
-#                                             #
-#   Username or password provided are wrong   #
-#        START the installation AGAIN!        #
-#                                             #
-###############################################
-
---
-
-As the message suggests you have to start the installation again when this error occurs.
-
-
-==== Debug
-To work with the debug environment provided by Syncope we added a particular installation option for it.
-It enough to run the script with the --setup-debug option
-[source]
---
-$ ./syncopeadm.sh install --setup-debug
---
-[source,bash,subs="verbatim,attributes"]
-----
-
-You are running: install --setup-debug 
-
-###############################################
-#                                             #
-# Welcome to Syncope CLI installation process #
-#                                             #
-###############################################
-
-Path to config files of Syncope CLI client will be: ./
-- File system permission checked
-
-Installation parameters checked on Syncope core version: {docVersion}
-
-###############################################
-#                                             #
-#           Installation successful           #
-#     now you can use Syncope CLI client      #
-#                                             #
-###############################################
-
-----
-
-=== Eclipse IDE Plugin
-
-The Eclipse IDE plugin allows remote management of notification e-mail and report templates.
-
-[[eclipseplugin-installation]]
-==== Installation
-
-After https://syncope.apache.org/downloads[download^], start the most recent Eclipse IDE distribution then go to 
-`Help > Install New Software`:
-
-image::eclipse01.png[eclipse01]
-
-Click on `Add`:
-
-image::eclipse02.png[eclipse02]
-
-Click on `Local` then `Archive` and find the downloaded zip file:
-
-image::eclipse03.png[eclipse03]
-
-image::eclipse04.png[eclipse04]
-
-image::eclipse05.png[eclipse05]
-
-Select `Apache Syncope` and click on `Next`:
-
-image::eclipse06.png[eclipse06]
-
-Click on `Finish` and wait for installation to complete:
-
-image::eclipse07.png[eclipse07]
-
-image::eclipse08.png[eclipse08]
-
-image::eclipse09.png[eclipse09]
-
-==== Setup
-
-After Eclipse IDE restart, go to `Window` > `Show View` > `Other`
-
-image::eclipse10.png[eclipse10]
-
-Select `Apache Syncope Templates`:
-
-image::eclipse11.png[eclipse11]
-
-In the new view, click on `Login`:
-
-image::eclipse12.png[eclipse12]
-
-Provide the base URL for Apache Syncope deployment, username and password:
-
-image::eclipse13.png[eclipse13]
-
-If the information above is correct, two folders should now appear:
-
-image::eclipse14.png[eclipse14]
-
-By double-clicking on each folder, the list of available templates is shown:
-
-image::eclipse15.png[eclipse15]
-
-Each template is now ready for authoring or removal; new templates can also be created.
 
 === Netbeans IDE Plugin
 

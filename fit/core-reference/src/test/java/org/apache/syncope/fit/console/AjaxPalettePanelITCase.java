@@ -24,7 +24,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
-import org.apache.syncope.client.console.wicket.markup.html.form.AjaxPalettePanel;
+import org.apache.syncope.client.ui.commons.markup.html.form.AjaxPalettePanel;
 import org.apache.wicket.model.IModel;
 import org.apache.wicket.model.util.ListModel;
 import org.apache.wicket.util.tester.FormTester;
@@ -41,10 +41,10 @@ public class AjaxPalettePanelITCase extends AbstractConsoleITCase {
         TestPage<String, AjaxPalettePanel<String>> testPage =
                 new TestPage.Builder<String, AjaxPalettePanel<String>>().build(
                         new AjaxPalettePanel.Builder<String>().setAllowOrder(true).build(
-                        TestPage.FIELD, SELECTED, ALL));
-        TESTER.startPage(testPage);
+                                TestPage.FIELD, SELECTED, ALL));
+        UTILITY_UI.getTester().startPage(testPage);
 
-        FormTester formTester = TESTER.newFormTester(testPage.getForm().getId());
+        FormTester formTester = UTILITY_UI.getTester().newFormTester(testPage.getForm().getId());
         formTester.submit();
 
         Collection<String> list = testPage.getFieldPanel().getModelCollection();

@@ -51,15 +51,25 @@ under the License.
       <artifactId>jstl</artifactId>
       <scope>provided</scope>
     </dependency>
-    
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot</artifactId>
+    </dependency>
+
     <dependency>
       <groupId>commons-io</groupId>
       <artifactId>commons-io</artifactId>
     </dependency>
 
     <dependency>
-      <groupId>org.apache.syncope.client</groupId>
-      <artifactId>syncope-client-lib</artifactId>
+      <groupId>org.apache.syncope.common.keymaster</groupId>
+      <artifactId>syncope-common-keymaster-client-api</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.syncope.client.idrepo</groupId>
+      <artifactId>syncope-client-idrepo-lib</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>

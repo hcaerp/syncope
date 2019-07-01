@@ -29,7 +29,6 @@ import java.security.AccessControlException;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
-import javax.sql.DataSource;
 import javax.ws.rs.ForbiddenException;
 import javax.ws.rs.core.GenericType;
 import javax.ws.rs.core.Response;
@@ -39,13 +38,14 @@ import org.apache.syncope.client.lib.BasicAuthenticationHandler;
 import org.apache.syncope.client.lib.SyncopeClient;
 import org.apache.syncope.common.lib.SyncopeClientException;
 import org.apache.syncope.common.lib.SyncopeConstants;
-import org.apache.syncope.common.lib.patch.DeassociationPatch;
-import org.apache.syncope.common.lib.patch.PasswordPatch;
-import org.apache.syncope.common.lib.patch.StatusPatch;
-import org.apache.syncope.common.lib.patch.StringPatchItem;
-import org.apache.syncope.common.lib.patch.StringReplacePatchItem;
-import org.apache.syncope.common.lib.patch.UserPatch;
-import org.apache.syncope.common.lib.to.AnyObjectTO;
+import org.apache.syncope.common.lib.request.AnyObjectCR;
+import org.apache.syncope.common.lib.request.ResourceDR;
+import org.apache.syncope.common.lib.request.PasswordPatch;
+import org.apache.syncope.common.lib.request.StatusR;
+import org.apache.syncope.common.lib.request.StringPatchItem;
+import org.apache.syncope.common.lib.request.StringReplacePatchItem;
+import org.apache.syncope.common.lib.request.UserCR;
+import org.apache.syncope.common.lib.request.UserUR;
 import org.apache.syncope.common.lib.to.AnyTypeClassTO;
 import org.apache.syncope.common.lib.to.AnyTypeTO;
 import org.apache.syncope.common.lib.to.MembershipTO;
@@ -62,8 +62,8 @@ import org.apache.syncope.common.lib.types.ClientExceptionType;
 import org.apache.syncope.common.lib.types.PatchOperation;
 import org.apache.syncope.common.lib.types.ResourceDeassociationAction;
 import org.apache.syncope.common.lib.types.SchemaType;
-import org.apache.syncope.common.lib.types.StandardEntitlement;
-import org.apache.syncope.common.lib.types.StatusPatchType;
+import org.apache.syncope.common.lib.types.IdRepoEntitlement;
+import org.apache.syncope.common.lib.types.StatusRType;
 import org.apache.syncope.common.rest.api.RESTHeaders;
 import org.apache.syncope.common.rest.api.beans.AnyQuery;
 import org.apache.syncope.common.rest.api.beans.UserRequestFormQuery;
@@ -74,15 +74,9 @@ import org.apache.syncope.core.spring.security.Encryptor;
 import org.apache.syncope.fit.AbstractITCase;
 import org.apache.syncope.fit.FlowableDetector;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 
-@SpringJUnitConfig(locations = { "classpath:testJDBCEnv.xml" })
 public class AuthenticationITCase extends AbstractITCase {
-
-    @Autowired
-    private DataSource testDataSource;
 
     private int getFailedLogins(final UserService userService, final String userKey) {
         UserTO readUserTO = userService.read(userKey);
@@ -105,19 +99,19 @@ public class AuthenticationITCase extends AbstractITCase {
         Pair<Map<String, Set<String>>, UserTO> self = clientFactory.create(
                 new AnonymousAuthenticationHandler(ANONYMOUS_UNAME, ANONYMOUS_KEY)).self();
         assertEquals(1, self.getLeft().size());
-        assertTrue(self.getLeft().keySet().contains(StandardEntitlement.ANONYMOUS));
+        assertTrue(self.getLeft().keySet().contains(IdRepoEntitlement.ANONYMOUS));
         assertEquals(ANONYMOUS_UNAME, self.getRight().getUsername());
 
         // 3. as admin
         self = adminClient.self();
         assertEquals(syncopeService.platform().getEntitlements().size(), self.getLeft().size());
-        assertFalse(self.getLeft().keySet().contains(StandardEntitlement.ANONYMOUS));
+        assertFalse(self.getLeft().keySet().contains(IdRepoEntitlement.ANONYMOUS));
         assertEquals(ADMIN_UNAME, self.getRight().getUsername());
 
         // 4. as user
         self = clientFactory.create("bellini", ADMIN_PWD).self();
         assertFalse(self.getLeft().isEmpty());
-        assertFalse(self.getLeft().keySet().contains(StandardEntitlement.ANONYMOUS));
+        assertFalse(self.getLeft().keySet().contains(IdRepoEntitlement.ANONYMOUS));
         assertEquals("bellini", self.getRight().getUsername());
     }
 
@@ -135,8 +129,8 @@ public class AuthenticationITCase extends AbstractITCase {
         assertEquals(schemaTO, newPlainSchemaTO);
 
         // 2. create an user with the role created above (as admin)
-        UserTO userTO = UserITCase.getUniqueSampleTO("auth@test.org");
-        userTO = createUser(userTO).getEntity();
+        UserCR userCR = UserITCase.getUniqueSample("auth@test.org");
+        UserTO userTO = createUser(userCR).getEntity();
         assertNotNull(userTO);
 
         // 3. read the schema created above (as admin) - success
@@ -162,10 +156,10 @@ public class AuthenticationITCase extends AbstractITCase {
 
     @Test
     public void userRead() {
-        UserTO userTO = UserITCase.getUniqueSampleTO("testuserread@test.org");
-        userTO.getRoles().add("User manager");
+        UserCR userCR = UserITCase.getUniqueSample("testuserread@test.org");
+        userCR.getRoles().add("User manager");
 
-        userTO = createUser(userTO).getEntity();
+        UserTO userTO = createUser(userCR).getEntity();
         assertNotNull(userTO);
 
         UserService userService2 = clientFactory.create(userTO.getUsername(), "password123").
@@ -187,10 +181,10 @@ public class AuthenticationITCase extends AbstractITCase {
 
     @Test
     public void userSearch() {
-        UserTO userTO = UserITCase.getUniqueSampleTO("testusersearch@test.org");
-        userTO.getRoles().add("User reviewer");
+        UserCR userCR = UserITCase.getUniqueSample("testusersearch@test.org");
+        userCR.getRoles().add("User reviewer");
 
-        userTO = createUser(userTO).getEntity();
+        UserTO userTO = createUser(userCR).getEntity();
         assertNotNull(userTO);
 
         // 1. user assigned to role 1, with search entitlement on realms /odd and /even: won't find anything with 
@@ -226,20 +220,20 @@ public class AuthenticationITCase extends AbstractITCase {
             // 1. create role for full user administration, under realm /even/two
             RoleTO role = new RoleTO();
             role.setKey("Delegated user admin");
-            role.getEntitlements().add(StandardEntitlement.USER_CREATE);
-            role.getEntitlements().add(StandardEntitlement.USER_UPDATE);
-            role.getEntitlements().add(StandardEntitlement.USER_DELETE);
-            role.getEntitlements().add(StandardEntitlement.USER_SEARCH);
-            role.getEntitlements().add(StandardEntitlement.USER_READ);
+            role.getEntitlements().add(IdRepoEntitlement.USER_CREATE);
+            role.getEntitlements().add(IdRepoEntitlement.USER_UPDATE);
+            role.getEntitlements().add(IdRepoEntitlement.USER_DELETE);
+            role.getEntitlements().add(IdRepoEntitlement.USER_SEARCH);
+            role.getEntitlements().add(IdRepoEntitlement.USER_READ);
             role.getRealms().add("/even/two");
 
             roleKey = roleService.create(role).getHeaderString(RESTHeaders.RESOURCE_KEY);
             assertNotNull(roleKey);
 
             // 2. as admin, create delegated admin user, and assign the role just created
-            UserTO delegatedAdmin = UserITCase.getUniqueSampleTO("admin@syncope.apache.org");
-            delegatedAdmin.getRoles().add(roleKey);
-            delegatedAdmin = createUser(delegatedAdmin).getEntity();
+            UserCR delegatedAdminCR = UserITCase.getUniqueSample("admin@syncope.apache.org");
+            delegatedAdminCR.getRoles().add(roleKey);
+            UserTO delegatedAdmin = createUser(delegatedAdminCR).getEntity();
             delegatedAdminKey = delegatedAdmin.getKey();
 
             // 3. instantiate a delegate user service client, for further operatins
@@ -247,41 +241,41 @@ public class AuthenticationITCase extends AbstractITCase {
                     clientFactory.create(delegatedAdmin.getUsername(), "password123").getService(UserService.class);
 
             // 4. as delegated, create user under realm / -> fail
-            UserTO user = UserITCase.getUniqueSampleTO("delegated@syncope.apache.org");
+            UserCR userCR = UserITCase.getUniqueSample("delegated@syncope.apache.org");
             try {
-                delegatedUserService.create(user, true);
+                delegatedUserService.create(userCR);
                 fail("This should not happen");
             } catch (SyncopeClientException e) {
                 assertEquals(ClientExceptionType.DelegatedAdministration, e.getType());
             }
 
             // 5. set realm to /even/two -> succeed
-            user.setRealm("/even/two");
+            userCR.setRealm("/even/two");
 
-            Response response = delegatedUserService.create(user, true);
+            Response response = delegatedUserService.create(userCR);
             assertEquals(Response.Status.CREATED.getStatusCode(), response.getStatus());
 
-            user = response.readEntity(new GenericType<ProvisioningResult<UserTO>>() {
+            UserTO user = response.readEntity(new GenericType<ProvisioningResult<UserTO>>() {
             }).getEntity();
             assertEquals("surname", user.getPlainAttr("surname").get().getValues().get(0));
 
             // 5. as delegated, update user attempting to move under realm / -> fail
-            UserPatch userPatch = new UserPatch();
-            userPatch.setKey(user.getKey());
-            userPatch.setRealm(new StringReplacePatchItem.Builder().value("/odd").build());
-            userPatch.getPlainAttrs().add(attrAddReplacePatch("surname", "surname2"));
+            UserUR userUR = new UserUR();
+            userUR.setKey(user.getKey());
+            userUR.setRealm(new StringReplacePatchItem.Builder().value("/odd").build());
+            userUR.getPlainAttrs().add(attrAddReplacePatch("surname", "surname2"));
 
             try {
-                delegatedUserService.update(userPatch);
+                delegatedUserService.update(userUR);
                 fail("This should not happen");
             } catch (SyncopeClientException e) {
                 assertEquals(ClientExceptionType.DelegatedAdministration, e.getType());
             }
 
             // 6. revert realm change -> succeed
-            userPatch.setRealm(null);
+            userUR.setRealm(null);
 
-            response = delegatedUserService.update(userPatch);
+            response = delegatedUserService.update(userUR);
             assertEquals(Response.Status.OK.getStatusCode(), response.getStatus());
 
             user = response.readEntity(new GenericType<ProvisioningResult<UserTO>>() {
@@ -309,10 +303,10 @@ public class AuthenticationITCase extends AbstractITCase {
 
     @Test
     public void checkFailedLogins() {
-        UserTO userTO = UserITCase.getUniqueSampleTO("checkFailedLogin@syncope.apache.org");
-        userTO.getRoles().add("User manager");
+        UserCR userCR = UserITCase.getUniqueSample("checkFailedLogin@syncope.apache.org");
+        userCR.getRoles().add("User manager");
 
-        userTO = createUser(userTO).getEntity();
+        UserTO userTO = createUser(userCR).getEntity();
         assertNotNull(userTO);
         String userKey = userTO.getKey();
 
@@ -342,11 +336,11 @@ public class AuthenticationITCase extends AbstractITCase {
 
     @Test
     public void checkUserSuspension() {
-        UserTO userTO = UserITCase.getUniqueSampleTO("checkSuspension@syncope.apache.org");
-        userTO.setRealm("/odd");
-        userTO.getRoles().add("User manager");
+        UserCR userCR = UserITCase.getUniqueSample("checkSuspension@syncope.apache.org");
+        userCR.setRealm("/odd");
+        userCR.getRoles().add("User manager");
 
-        userTO = createUser(userTO).getEntity();
+        UserTO userTO = createUser(userCR).getEntity();
         String userKey = userTO.getKey();
         assertNotNull(userTO);
 
@@ -396,8 +390,8 @@ public class AuthenticationITCase extends AbstractITCase {
             assertNotNull(e);
         }
 
-        StatusPatch reactivate = new StatusPatch.Builder().key(userTO.getKey()).
-                type(StatusPatchType.REACTIVATE).build();
+        StatusR reactivate = new StatusR.Builder().key(userTO.getKey()).
+                type(StatusRType.REACTIVATE).build();
         userTO = userService.status(reactivate).readEntity(new GenericType<ProvisioningResult<UserTO>>() {
         }).getEntity();
         assertNotNull(userTO);
@@ -437,11 +431,11 @@ public class AuthenticationITCase extends AbstractITCase {
                 anyMatch(entitlement -> entitlement.contains(anyTypeKey)));
 
         // 3. attempt to create an instance of the type above: fail because no entitlement was assigned
-        AnyObjectTO folder = new AnyObjectTO();
+        AnyObjectCR folder = new AnyObjectCR();
         folder.setName("home");
         folder.setRealm(SyncopeConstants.ROOT_REALM);
         folder.setType(anyTypeKey);
-        folder.getPlainAttrs().add(attrTO(path.getKey(), "/home"));
+        folder.getPlainAttrs().add(attr(path.getKey(), "/home"));
 
         SyncopeClient belliniClient = clientFactory.create("bellini", ADMIN_PWD);
         try {
@@ -460,11 +454,11 @@ public class AuthenticationITCase extends AbstractITCase {
         role = createRole(role);
 
         UserTO bellini = userService.read("bellini");
-        UserPatch patch = new UserPatch();
-        patch.setKey(bellini.getKey());
-        patch.getRoles().add(new StringPatchItem.Builder().
+        UserUR req = new UserUR();
+        req.setKey(bellini.getKey());
+        req.getRoles().add(new StringPatchItem.Builder().
                 operation(PatchOperation.ADD_REPLACE).value(role.getKey()).build());
-        bellini = updateUser(patch).getEntity();
+        bellini = updateUser(req).getEntity();
         assertTrue(bellini.getRoles().contains(role.getKey()));
 
         // 5. now the instance of the type above can be created successfully
@@ -479,11 +473,10 @@ public class AuthenticationITCase extends AbstractITCase {
 
         // 1. create user with group 'groupForWorkflowApproval' 
         // (users with group groupForWorkflowApproval are defined in workflow as subject to approval)
-        UserTO userTO = UserITCase.getUniqueSampleTO("createWithReject@syncope.apache.org");
-        userTO.getMemberships().add(
-                new MembershipTO.Builder().group("0cbcabd2-4410-4b6b-8f05-a052b451d18f").build());
+        UserCR userCR = UserITCase.getUniqueSample("createWithReject@syncope.apache.org");
+        userCR.getMemberships().add(new MembershipTO.Builder("0cbcabd2-4410-4b6b-8f05-a052b451d18f").build());
 
-        userTO = createUser(userTO).getEntity();
+        UserTO userTO = createUser(userCR).getEntity();
         assertNotNull(userTO);
         assertEquals("createApproval", userTO.getStatus());
 
@@ -515,23 +508,23 @@ public class AuthenticationITCase extends AbstractITCase {
     @Test
     public void issueSYNCOPE164() throws Exception {
         // 1. create user with db resource
-        UserTO user = UserITCase.getUniqueSampleTO("syncope164@syncope.apache.org");
-        user.setRealm("/even/two");
-        user.setPassword("password123");
-        user.getResources().add(RESOURCE_NAME_TESTDB);
-        user = createUser(user).getEntity();
+        UserCR userCR = UserITCase.getUniqueSample("syncope164@syncope.apache.org");
+        userCR.setRealm("/even/two");
+        userCR.setPassword("password123");
+        userCR.getResources().add(RESOURCE_NAME_TESTDB);
+        UserTO user = createUser(userCR).getEntity();
         assertNotNull(user);
 
         // 2. unlink the resource from the created user
-        DeassociationPatch deassociationPatch = new DeassociationPatch.Builder().key(user.getKey()).
+        ResourceDR resourceDR = new ResourceDR.Builder().key(user.getKey()).
                 action(ResourceDeassociationAction.UNLINK).resource(RESOURCE_NAME_TESTDB).build();
-        assertNotNull(parseBatchResponse(userService.deassociate(deassociationPatch)));
+        assertNotNull(parseBatchResponse(userService.deassociate(resourceDR)));
 
         // 3. change password on Syncope
-        UserPatch userPatch = new UserPatch();
-        userPatch.setKey(user.getKey());
-        userPatch.setPassword(new PasswordPatch.Builder().value("password234").build());
-        user = updateUser(userPatch).getEntity();
+        UserUR userUR = new UserUR();
+        userUR.setKey(user.getKey());
+        userUR.setPassword(new PasswordPatch.Builder().value("password234").build());
+        user = updateUser(userUR).getEntity();
         assertNotNull(user);
 
         // 4. check that the db resource has still the initial password value

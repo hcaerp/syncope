@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
@@ -17,16 +17,51 @@
 # specific language governing permissions and limitations
 # under the License.
 
-cd /etc/apache-syncope
-rm provisioning.properties
+cd /opt/syncope/conf
+
+rm -f provisioning.properties
 ln -s provisioning.properties.$DBMS provisioning.properties
 
+rm -f persistence.properties
+if [ $DBMS = "pgjsonb" ]; then
+  ln -s persistence.properties.pgjsonb persistence.properties
+elif [ $DBMS = "myjson" ]; then
+  ln -s persistence.properties.myjson persistence.properties
+else
+  ln -s persistence.properties.all persistence.properties
+fi
+
+rm -f views.xml
+ln -s views.xml.$DBMS views.xml
+
+if [ $DBMS = "pgjsonb" ]; then
+  ln -s indexes.xml.pgjsonb indexes.xml
+elif [ $DBMS = "myjson" ]; then
+  ln -s indexes.xml.myjson indexes.xml
+else
+  rm -f indexes.xml
+fi
+
 cd domains
-rm Master.properties
+
+if [ $DBMS = "pgjsonb" ]; then
+  mv MasterContent.xml MasterContent.xml.all
+  ln -s MasterContent.xml.pgjsonb MasterContent.xml
+elif [ $DBMS = "myjson" ]; then
+  mv MasterContent.xml MasterContent.xml.all
+  ln -s MasterContent.xml.myjson MasterContent.xml
+else
+  rm -f MasterContent.xml
+  mv MasterContent.xml.all MasterContent.xml
+fi
+
+rm -f Master.properties
 ln -s Master.properties.$DBMS Master.properties
 
-/etc/init.d/tomcat8 start
-
-xtail /var/log/apache-syncope/*.log /var/log/tomcat8/
-
-/bin/bash
+if [ $DBMS = "pgjsonb" ] || [ $DBMS = "myjson" ] ; then
+export LOADER_PATH="/opt/syncope/conf,/opt/syncope/lib,/opt/syncope/jpa-json"
+else
+export LOADER_PATH="/opt/syncope/conf,/opt/syncope/lib"
+fi
+java -Dfile.encoding=UTF-8 -server -Xms1536m -Xmx1536m -XX:NewSize=256m -XX:MaxNewSize=256m \
+ -XX:+DisableExplicitGC -Djava.security.egd=file:/dev/./urandom -jar /opt/syncope/lib/syncope.war

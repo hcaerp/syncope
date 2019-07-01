@@ -19,8 +19,8 @@
 === Customization
 
 [CAUTION]
-Only Maven projects can be customized: if using Standalone, Debian packages or the GUI installer, none of the
-customizations discussed below can be applied.
+Only Maven projects can be customized: if using Standalone or Debian packages, none of the customizations discussed
+below can be applied.
 
 Apache Syncope is designed to be as flexible as possible, to best suit the various environments
 in which it can be deployed. Besides other aspects, this means that every feature and component can be extended or
@@ -157,7 +157,7 @@ If no failures are encountered, your basic Apache Syncope project is now ready t
 [TIP]
 .JPDA Debug in Embedded Mode
 ====
-The Java™ Platform Debugger Architecture (http://docs.oracle.com/javase/8/docs/technotes/guides/jpda/index.html[JPDA^])
+The Java™ Platform Debugger Architecture (https://docs.oracle.com/en/java/javase/11/docs/specs/jpda/jpda.html[JPDA^])
 is a collection of APIs aimed to help with debugging Java code.
 
 Enhancing the `embedded` profile of the `enduser` module to enable the JPDA socket is quite
@@ -178,10 +178,10 @@ straightforward: just add the `<profile>` below to `enduser/pom.xml`:
           <configuration>
             <properties>
               <cargo.jvmargs>
-              -Xdebug
-              -Xrunjdwp:transport=dt_socket,address=8000,server=y,suspend=n
-              -noverify -XX:+CMSClassUnloadingEnabled
-              -XX:+UseConcMarkSweepGC -Xmx1024m -Xms512m
+                -Xdebug
+                -Xrunjdwp:transport=dt_socket,address=8000,server=y,suspend=n
+                -Dspring.profiles.active=embedded
+                -XX:+CMSClassUnloadingEnabled -Xmx1024m -Xms512m
               </cargo.jvmargs>
             </properties>
           </configuration>
@@ -311,7 +311,7 @@ becomes:
 ====
 
 [discrete]
-===== Select the <<flowable-user-workflow-adapter>>
+===== Enable the <<flowable-user-workflow-adapter>>
 
 Add the following dependency to `core/pom.xml`:
 
@@ -325,17 +325,6 @@ Add the following dependency to `core/pom.xml`:
 ----
 
 Copy `core/src/main/resources/all/workflow.properties` to `core/src/main/resources/workflow.properties`.
-
-Add the following dependency to `console/pom.xml`:
-
-[source,xml,subs="verbatim,attributes"]
-----
-<dependency>
-  <groupId>org.apache.syncope.ext.flowable</groupId>
-  <artifactId>syncope-ext-flowable-client-console</artifactId>
-  <version>${syncope.version}</version>
-</dependency>
-----
 
 [discrete]
 ===== Enable the <<apache-camel-provisioning-manager>>
@@ -478,7 +467,7 @@ with
 
 ....
 classpath*:/coreContext.xml
-classpath*:/elasticsearchClientContext.xml
+classpath:/elasticsearchClientContext.xml
 classpath*:/securityContext.xml
 classpath*:/logicContext.xml
 classpath*:/restCXFContext.xml
@@ -486,6 +475,15 @@ classpath*:/persistenceContext.xml
 classpath*:/provisioning*Context.xml
 classpath*:/workflow*Context.xml
 ....
+
+It is also required to initialize the Elasticsearch indexes: add a new Java <<implementations,implementation>> for
+`TASKJOB_DELEGATE` and use `org.apache.syncope.core.provisioning.java.job.ElasticsearchReindex` as class. +
+Then, create a new <<tasks-custom, custom task>>, select the implementation just created as job delegate and execute it.
+
+[TIP]
+The `org.apache.syncope.core.provisioning.java.job.ElasticsearchReindex` custom task created above is not meant for
+scheduled execution; rather, it can be run every time you want to blank and re-create the Elasticsearch indexes
+starting from Syncope's users, groups and any objects.
 
 [discrete]
 ===== Enable the <<SCIM>> extension
@@ -547,6 +545,20 @@ By following such conventions, the new REST endpoint will be automatically picke
 When providing custom Java classes implementing the defined interfaces or extending the existing
 implementations, their package *must* be rooted under `org.apache.syncope.client.console`, otherwise they will not be
 available at runtime.
+
+[discrete]
+===== Enable the <<flowable-user-workflow-adapter>>
+
+Add the following dependency to `console/pom.xml`:
+
+[source,xml,subs="verbatim,attributes"]
+----
+<dependency>
+  <groupId>org.apache.syncope.ext.flowable</groupId>
+  <artifactId>syncope-ext-flowable-client-console</artifactId>
+  <version>${syncope.version}</version>
+</dependency>
+----
 
 [discrete]
 ===== Enable the <<apache-camel-provisioning-manager>>
@@ -617,6 +629,20 @@ generated under the local project's `enduser/src/main/webapp/app/` directory and
 
 The files in use by the Apache Wicket-based backend are still subject to the general
 <<override-behavior,override behavior>>, instead.
+
+[discrete]
+===== Enable the <<flowable-user-workflow-adapter>>
+
+Add the following dependency to `enduser/pom.xml`:
+
+[source,xml,subs="verbatim,attributes"]
+----
+<dependency>
+  <groupId>org.apache.syncope.ext.flowable</groupId>
+  <artifactId>syncope-ext-flowable-client-enduser</artifactId>
+  <version>${syncope.version}</version>
+</dependency>
+----
 
 [discrete]
 ===== Enable the <<saml-2-0-service-provider>> extension
@@ -720,7 +746,7 @@ customization.
 [NOTE]
 .Hot deploy
 ====
-The `customFormAttributes.json` could be edited and reloaded without the need of re-starting the Java EE container.
+The `customFormAttributes.json` could be edited and reloaded without the need of re-starting the deployment.
 ====
 
 [TIP]
@@ -827,7 +853,7 @@ An empty `attributes` field translates to skip filtering and show all attributes
 ```
 shows all `PLAIN` attributes.
 
-If all attributes are to be hidden, please use [[customization-enduser-template]] to hide the full wizard step, instead.
+If all attributes are to be hidden, please use <<customization-enduser-template>> to hide the full wizard step, instead.
 ====
 
 [NOTE]
@@ -856,7 +882,7 @@ style and structure.
 [NOTE]
 .Hot deploy
 ====
-The `customTemplate.json` could be edited and reloaded without the need of re-starting the Java EE container.
+The `customTemplate.json` could be edited and reloaded without the need of re-starting the deployment.
 ====
 
 [TIP]

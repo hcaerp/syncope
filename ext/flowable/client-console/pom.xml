@@ -34,7 +34,7 @@ under the License.
   <packaging>jar</packaging>
   
   <properties>
-    <flowable-modeler.directory>${project.build.directory}/classes/META-INF/resources/flowable-modeler</flowable-modeler.directory>
+    <flowable-modeler.directory>${project.build.outputDirectory}/META-INF/resources/flowable-modeler</flowable-modeler.directory>
     <rootpom.basedir>${basedir}/../../..</rootpom.basedir>
   </properties>
 
@@ -47,7 +47,7 @@ under the License.
 
     <dependency>
       <groupId>org.apache.syncope.ext.flowable</groupId>
-      <artifactId>syncope-ext-flowable-common-lib</artifactId>
+      <artifactId>syncope-ext-flowable-client-common-ui</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>
@@ -56,8 +56,8 @@ under the License.
       <version>${project.version}</version>
     </dependency>
     <dependency>
-      <groupId>org.apache.syncope.client</groupId>
-      <artifactId>syncope-client-console</artifactId>
+      <groupId>org.apache.syncope.client.idrepo</groupId>
+      <artifactId>syncope-client-idrepo-console</artifactId>
       <version>${project.version}</version>
     </dependency>
     

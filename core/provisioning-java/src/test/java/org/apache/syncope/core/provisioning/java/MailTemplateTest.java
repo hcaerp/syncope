@@ -32,7 +32,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.apache.commons.jexl3.MapContext;
 import org.apache.commons.lang3.SerializationUtils;
-import org.apache.syncope.common.lib.to.AttrTO;
+import org.apache.syncope.common.lib.Attr;
 import org.apache.syncope.common.lib.to.MembershipTO;
 import org.apache.syncope.common.lib.to.UserTO;
 import org.apache.syncope.core.provisioning.java.jexl.JexlUtils;
@@ -85,10 +85,10 @@ public class MailTemplateTest extends AbstractTest {
         assertNotNull(htmlBody);
         assertTrue(htmlBody.contains("a password reset was request for " + username + "."));
         assertFalse(htmlBody.contains(
-                "http://localhost:9080/syncope-enduser/app/#!/confirmpasswordreset?token="
+                "http://localhost:9080/syncope-enduser/confirmpasswordreset?token="
                 + token));
         assertTrue(htmlBody.contains(
-                "http://localhost:9080/syncope-enduser/app/#!/confirmpasswordreset?token="
+                "http://localhost:9080/syncope-enduser/confirmpasswordreset?token="
                 + token.replaceAll(" ", "%20")));
     }
 
@@ -99,10 +99,10 @@ public class MailTemplateTest extends AbstractTest {
         String username = "test" + UUID.randomUUID().toString();
         UserTO user = new UserTO();
         user.setUsername(username);
-        user.getPlainAttrs().add(new AttrTO.Builder().schema("firstname").value("John").build());
-        user.getPlainAttrs().add(new AttrTO.Builder().schema("surname").value("Doe").build());
-        user.getPlainAttrs().add(new AttrTO.Builder().schema("email").value("john.doe@syncope.apache.org").build());
-        user.getMemberships().add(new MembershipTO.Builder().group(UUID.randomUUID().toString(), "a group").build());
+        user.getPlainAttrs().add(new Attr.Builder("firstname").value("John").build());
+        user.getPlainAttrs().add(new Attr.Builder("surname").value("Doe").build());
+        user.getPlainAttrs().add(new Attr.Builder("email").value("john.doe@syncope.apache.org").build());
+        user.getMemberships().add(new MembershipTO.Builder(UUID.randomUUID().toString()).groupName("a group").build());
         ctx.put("user", user);
 
         String token = "token " + UUID.randomUUID().toString();

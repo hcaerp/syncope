@@ -22,7 +22,6 @@ import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import javax.servlet.ServletException;
-import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import org.apache.commons.lang3.StringUtils;
@@ -32,19 +31,28 @@ import org.apache.syncope.common.lib.SSOConstants;
 import org.apache.syncope.common.lib.to.SAML2ReceivedResponseTO;
 import org.apache.syncope.common.lib.to.SAML2RequestTO;
 import org.apache.syncope.common.rest.api.service.SAML2SPService;
+import org.springframework.context.ApplicationContext;
 
-@WebServlet(name = "logout", urlPatterns = { "/saml2sp/logout" })
 public class Logout extends AbstractSAML2SPServlet {
 
     private static final long serialVersionUID = 3010286040376932117L;
+
+    private final boolean useGZIPCompression;
+
+    public Logout(
+            final ApplicationContext ctx,
+            final boolean useGZIPCompression) {
+
+        super(ctx);
+        this.useGZIPCompression = useGZIPCompression;
+    }
 
     private void doLogout(
             final SAML2ReceivedResponseTO receivedResponse,
             final HttpServletRequest request,
             final HttpServletResponse response) throws ServletException, IOException {
 
-        SyncopeClientFactoryBean clientFactory = (SyncopeClientFactoryBean) request.getServletContext().
-                getAttribute(Constants.SYNCOPE_CLIENT_FACTORY);
+        SyncopeClientFactoryBean clientFactory = getClientFactory(request.getServletContext(), useGZIPCompression);
         try {
             String accessToken = (String) request.getSession().getAttribute(Constants.SAML2SPJWT);
             if (StringUtils.isBlank(accessToken)) {
@@ -72,7 +80,7 @@ public class Logout extends AbstractSAML2SPServlet {
                 e.printStackTrace(response.getWriter());
             } else {
                 response.sendRedirect(errorURL + "?errorMessage="
-                        + URLEncoder.encode(e.getMessage(), StandardCharsets.UTF_8.name()));
+                        + URLEncoder.encode(e.getMessage(), StandardCharsets.UTF_8));
             }
         }
     }
@@ -84,8 +92,7 @@ public class Logout extends AbstractSAML2SPServlet {
         String samlResponse = request.getParameter(SSOConstants.SAML_RESPONSE);
         String relayState = request.getParameter(SSOConstants.RELAY_STATE);
         if (samlResponse == null) { // prepare logout response
-            SyncopeClientFactoryBean clientFactory = (SyncopeClientFactoryBean) request.getServletContext().
-                    getAttribute(Constants.SYNCOPE_CLIENT_FACTORY);
+            SyncopeClientFactoryBean clientFactory = getClientFactory(request.getServletContext(), useGZIPCompression);
             try {
                 String accessToken = (String) request.getSession().getAttribute(Constants.SAML2SPJWT);
                 if (StringUtils.isBlank(accessToken)) {
@@ -108,7 +115,7 @@ public class Logout extends AbstractSAML2SPServlet {
                     e.printStackTrace(response.getWriter());
                 } else {
                     response.sendRedirect(errorURL + "?errorMessage="
-                            + URLEncoder.encode(e.getMessage(), StandardCharsets.UTF_8.name()));
+                            + URLEncoder.encode(e.getMessage(), StandardCharsets.UTF_8));
                 }
             }
         } else { // process REDIRECT binding logout response

@@ -18,109 +18,106 @@
  */
 package org.apache.syncope.fit.console;
 
-import java.io.Serializable;
-import java.lang.reflect.Method;
+import com.giffing.wicket.spring.boot.context.extensions.WicketApplicationInitConfiguration;
+import com.giffing.wicket.spring.boot.context.extensions.boot.actuator.WicketEndpointRepository;
+import com.giffing.wicket.spring.boot.starter.app.classscanner.candidates.WicketClassCandidatesHolder;
+import com.giffing.wicket.spring.boot.starter.configuration.extensions.core.settings.general.GeneralSettingsProperties;
+import com.giffing.wicket.spring.boot.starter.configuration.extensions.external.spring.boot.actuator.WicketEndpointRepositoryDefault;
+import java.util.Collections;
+import java.util.List;
+import org.apache.syncope.client.console.SyncopeWebApplication;
+import org.apache.syncope.client.console.commons.PreviewUtils;
+import org.apache.syncope.client.console.init.ClassPathScanImplementationLookup;
+import org.apache.syncope.client.console.init.MIMETypesLoader;
 import org.apache.syncope.client.console.pages.Login;
 import org.apache.syncope.client.lib.SyncopeClientFactoryBean;
+import org.apache.syncope.common.keymaster.client.self.SelfKeymasterClientContext;
 import org.apache.syncope.common.rest.api.service.SyncopeService;
-import org.apache.wicket.Component;
-import org.apache.wicket.MarkupContainer;
-import org.apache.wicket.behavior.AbstractAjaxBehavior;
-import org.apache.wicket.core.util.lang.PropertyResolver;
-import org.apache.wicket.markup.html.list.ListItem;
+import org.apache.syncope.fit.ui.AbstractUITCase;
+import org.apache.syncope.fit.ui.UtilityUIT;
 import org.apache.wicket.util.tester.FormTester;
 import org.apache.wicket.util.tester.WicketTester;
-import org.apache.wicket.util.visit.IVisit;
 import org.junit.jupiter.api.BeforeAll;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 
-public abstract class AbstractConsoleITCase {
+public abstract class AbstractConsoleITCase extends AbstractUITCase {
 
-    protected static final Logger LOG = LoggerFactory.getLogger(AbstractConsoleITCase.class);
+    protected static UtilityUIT UTILITY_UI;
 
-    protected static final String ADMIN_UNAME = "admin";
+    @ImportAutoConfiguration(classes = { SelfKeymasterClientContext.class })
+    @Configuration
+    public static class SyncopeConsoleWebApplicationTestConfig {
 
-    protected static final String ADMIN_PWD = "password";
+        @Bean
+        public GeneralSettingsProperties generalSettingsProperties() {
+            return new GeneralSettingsProperties();
+        }
 
-    protected static final String ADDRESS = "http://localhost:9080/syncope/rest";
+        @Bean
+        public List<WicketApplicationInitConfiguration> configurations() {
+            return Collections.emptyList();
+        }
 
-    protected static final String KEY = "key";
+        @Bean
+        public WicketClassCandidatesHolder wicketClassCandidatesHolder() {
+            return new WicketClassCandidatesHolder();
+        }
 
-    protected static final String SCHEMA = "schema";
+        @Bean
+        public WicketEndpointRepository wicketEndpointRepository() {
+            return new WicketEndpointRepositoryDefault();
+        }
 
-    protected static WicketTester TESTER;
+        @Bean
+        public ClassPathScanImplementationLookup classPathScanImplementationLookup() {
+            ClassPathScanImplementationLookup lookup = new ClassPathScanImplementationLookup();
+            lookup.load();
+            return lookup;
+        }
 
-    protected static SyncopeService SYNCOPE_SERVICE;
+        @Bean
+        public MIMETypesLoader mimeTypesLoader() {
+            MIMETypesLoader mimeTypesLoader = new MIMETypesLoader();
+            mimeTypesLoader.load();
+            return mimeTypesLoader;
+        }
+
+        @Bean
+        public PreviewUtils previewUtils() {
+            return new PreviewUtils();
+        }
+    }
 
     @BeforeAll
     public static void setUp() {
-        TESTER = ConsoleSetup.TESTER;
+        synchronized (LOG) {
+            if (UTILITY_UI == null) {
+                AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext();
+                ctx.register(SyncopeConsoleWebApplicationTestConfig.class);
+                ctx.register(SyncopeWebApplication.class);
+                ctx.refresh();
 
-        SYNCOPE_SERVICE = new SyncopeClientFactoryBean().
-                setAddress(ADDRESS).create(ADMIN_UNAME, ADMIN_PWD).
-                getService(SyncopeService.class);
+                UTILITY_UI = new UtilityUIT(new WicketTester(ctx.getBean(SyncopeWebApplication.class)));
+            }
+
+            if (SYNCOPE_SERVICE == null) {
+                SYNCOPE_SERVICE = new SyncopeClientFactoryBean().
+                        setAddress(ADDRESS).create(ADMIN_UNAME, ADMIN_PWD).
+                        getService(SyncopeService.class);
+            }
+        }
     }
 
     protected void doLogin(final String user, final String passwd) {
-        TESTER.startPage(Login.class);
-        TESTER.assertRenderedPage(Login.class);
+        UTILITY_UI.getTester().startPage(Login.class);
+        UTILITY_UI.getTester().assertRenderedPage(Login.class);
 
-        FormTester formTester = TESTER.newFormTester("login");
+        FormTester formTester = UTILITY_UI.getTester().newFormTester("login");
         formTester.setValue("username", user);
         formTester.setValue("password", passwd);
         formTester.submit("submit");
-    }
-
-    protected <V extends Serializable> Component findComponentByProp(
-            final String property, final String searchPath, final V key) {
-
-        Component component = TESTER.getComponentFromLastRenderedPage(searchPath);
-        return (component instanceof MarkupContainer ? MarkupContainer.class.cast(component) : component.getPage()).
-                visitChildren(ListItem.class, (ListItem<?> object, IVisit<Component> visit) -> {
-                    try {
-                        Method getter = PropertyResolver.getPropertyGetter(property, object.getModelObject());
-                        if (getter != null && getter.invoke(object.getModelObject()).equals(key)) {
-                            visit.stop(object);
-                        }
-                    } catch (Exception e) {
-                        LOG.error("Error invoke method", e);
-                    }
-                });
-    }
-
-    protected <V extends Serializable> Component findComponentByPropNotNull(
-            final String property, final String searchPath) {
-
-        Component component = TESTER.getComponentFromLastRenderedPage(searchPath);
-        return (component instanceof MarkupContainer ? MarkupContainer.class.cast(component) : component.getPage()).
-                visitChildren(ListItem.class, (ListItem<?> object, IVisit<Component> visit) -> {
-                    try {
-                        Method getter = PropertyResolver.getPropertyGetter(property, object.getModelObject());
-                        if (getter != null && getter.invoke(object.getModelObject()) != null) {
-                            visit.stop(object);
-                        }
-                    } catch (Exception e) {
-                        LOG.error("Error invoke method", e);
-                    }
-                });
-    }
-
-    protected Component findComponentById(final String searchPath, final String id) {
-        Component component = TESTER.getComponentFromLastRenderedPage(searchPath);
-        return (component instanceof MarkupContainer ? MarkupContainer.class.cast(component) : component.getPage()).
-                visitChildren(Component.class, (final Component object, final IVisit<Component> visit) -> {
-                    if (object.getId().equals(id)) {
-                        visit.stop(object);
-                    }
-                });
-    }
-
-    protected void closeCallBack(final Component modal) {
-        modal.getBehaviors().stream().
-                filter(behavior -> (behavior instanceof AbstractAjaxBehavior)).
-                forEachOrdered(behavior -> {
-                    TESTER.executeBehavior((AbstractAjaxBehavior) behavior);
-                });
     }
 }

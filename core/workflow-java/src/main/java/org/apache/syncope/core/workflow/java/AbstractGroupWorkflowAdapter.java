@@ -18,8 +18,8 @@
  */
 package org.apache.syncope.core.workflow.java;
 
-import org.apache.syncope.common.lib.patch.GroupPatch;
-import org.apache.syncope.common.lib.to.GroupTO;
+import org.apache.syncope.common.lib.request.GroupCR;
+import org.apache.syncope.common.lib.request.GroupUR;
 import org.apache.syncope.core.persistence.api.dao.GroupDAO;
 import org.apache.syncope.core.persistence.api.entity.EntityFactory;
 import org.apache.syncope.core.persistence.api.entity.group.Group;
@@ -47,21 +47,21 @@ public abstract class AbstractGroupWorkflowAdapter implements GroupWorkflowAdapt
         return null;
     }
 
-    protected abstract WorkflowResult<String> doCreate(GroupTO groupTO);
+    protected abstract WorkflowResult<String> doCreate(GroupCR groupCR);
 
     @Override
-    public WorkflowResult<String> create(final GroupTO groupTO) {
-        return doCreate(groupTO);
+    public WorkflowResult<String> create(final GroupCR groupCR) {
+        return doCreate(groupCR);
     }
 
-    protected abstract WorkflowResult<GroupPatch> doUpdate(Group group, GroupPatch groupPatch);
+    protected abstract WorkflowResult<GroupUR> doUpdate(Group group, GroupUR groupUR);
 
     @Override
-    public WorkflowResult<GroupPatch> update(final GroupPatch groupPatch) {
-        WorkflowResult<GroupPatch> result = doUpdate(groupDAO.authFind(groupPatch.getKey()), groupPatch);
+    public WorkflowResult<GroupUR> update(final GroupUR groupUR) {
+        WorkflowResult<GroupUR> result = doUpdate(groupDAO.authFind(groupUR.getKey()), groupUR);
 
         // re-read to ensure that requester's administration rights are still valid
-        groupDAO.authFind(groupPatch.getKey());
+        groupDAO.authFind(groupUR.getKey());
 
         return result;
     }

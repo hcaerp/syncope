@@ -32,12 +32,14 @@ import javax.annotation.Resource;
 import org.apache.commons.lang3.BooleanUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
+import org.apache.syncope.common.keymaster.client.api.ConfParamOps;
 import org.apache.syncope.common.lib.SyncopeClientCompositeException;
 import org.apache.syncope.common.lib.SyncopeClientException;
-import org.apache.syncope.common.lib.patch.AttrPatch;
-import org.apache.syncope.common.lib.patch.PasswordPatch;
-import org.apache.syncope.common.lib.patch.StringPatchItem;
-import org.apache.syncope.common.lib.patch.UserPatch;
+import org.apache.syncope.common.lib.request.AttrPatch;
+import org.apache.syncope.common.lib.request.PasswordPatch;
+import org.apache.syncope.common.lib.request.StringPatchItem;
+import org.apache.syncope.common.lib.request.UserCR;
+import org.apache.syncope.common.lib.request.UserUR;
 import org.apache.syncope.common.lib.to.MembershipTO;
 import org.apache.syncope.common.lib.to.UserTO;
 import org.apache.syncope.common.lib.types.AnyTypeKind;
@@ -46,7 +48,6 @@ import org.apache.syncope.common.lib.types.ClientExceptionType;
 import org.apache.syncope.common.lib.types.PatchOperation;
 import org.apache.syncope.common.lib.types.ResourceOperation;
 import org.apache.syncope.core.persistence.api.dao.AccessTokenDAO;
-import org.apache.syncope.core.persistence.api.dao.ConfDAO;
 import org.apache.syncope.core.persistence.api.dao.SecurityQuestionDAO;
 import org.apache.syncope.core.persistence.api.entity.group.Group;
 import org.apache.syncope.core.persistence.api.entity.user.SecurityQuestion;
@@ -82,9 +83,6 @@ public class UserDataBinderImpl extends AbstractAnyDataBinder implements UserDat
     private RoleDAO roleDAO;
 
     @Autowired
-    private ConfDAO confDAO;
-
-    @Autowired
     private SecurityQuestionDAO securityQuestionDAO;
 
     @Autowired
@@ -92,6 +90,9 @@ public class UserDataBinderImpl extends AbstractAnyDataBinder implements UserDat
 
     @Autowired
     private AccessTokenDAO accessTokenDAO;
+
+    @Autowired
+    private ConfParamOps confParamOps;
 
     @Resource(name = "adminUser")
     private String adminUser;
@@ -102,7 +103,7 @@ public class UserDataBinderImpl extends AbstractAnyDataBinder implements UserDat
     @Transactional(readOnly = true)
     @Override
     public UserTO returnUserTO(final UserTO userTO) {
-        if (!confDAO.find("return.password.value", false)) {
+        if (!confParamOps.get(AuthContextUtils.getDomain(), "return.password.value", false, Boolean.class)) {
             userTO.setPassword(null);
         }
         return userTO;
@@ -132,7 +133,8 @@ public class UserDataBinderImpl extends AbstractAnyDataBinder implements UserDat
 
     private void setPassword(final User user, final String password, final SyncopeClientCompositeException scce) {
         try {
-            String algorithm = confDAO.find("password.cipher.algorithm", CipherAlgorithm.AES.name());
+            String algorithm = confParamOps.get(AuthContextUtils.getDomain(),
+                    "password.cipher.algorithm", CipherAlgorithm.AES.name(), String.class);
             user.setPassword(password, CipherAlgorithm.valueOf(algorithm));
         } catch (IllegalArgumentException e) {
             SyncopeClientException invalidCiperAlgorithm = SyncopeClientException.build(ClientExceptionType.NotFound);
@@ -144,32 +146,33 @@ public class UserDataBinderImpl extends AbstractAnyDataBinder implements UserDat
     }
 
     @Override
-    public void create(final User user, final UserTO userTO, final boolean storePassword) {
+    public void create(final User user, final UserCR userCR) {
         SyncopeClientCompositeException scce = SyncopeClientException.buildComposite();
 
         // set username
-        user.setUsername(userTO.getUsername());
+        user.setUsername(userCR.getUsername());
 
         // set password
-        if (StringUtils.isBlank(userTO.getPassword()) || !storePassword) {
+        if (StringUtils.isBlank(userCR.getPassword()) || !userCR.isStorePassword()) {
             LOG.debug("Password was not provided or not required to be stored");
         } else {
-            setPassword(user, userTO.getPassword(), scce);
+            setPassword(user, userCR.getPassword(), scce);
+            user.setChangePwdDate(new Date());
         }
 
-        user.setMustChangePassword(userTO.isMustChangePassword());
+        user.setMustChangePassword(userCR.isMustChangePassword());
 
         // security question / answer
-        if (userTO.getSecurityQuestion() != null) {
-            SecurityQuestion securityQuestion = securityQuestionDAO.find(userTO.getSecurityQuestion());
+        if (userCR.getSecurityQuestion() != null) {
+            SecurityQuestion securityQuestion = securityQuestionDAO.find(userCR.getSecurityQuestion());
             if (securityQuestion != null) {
                 user.setSecurityQuestion(securityQuestion);
             }
         }
-        user.setSecurityAnswer(userTO.getSecurityAnswer());
+        user.setSecurityAnswer(userCR.getSecurityAnswer());
 
         // roles
-        userTO.getRoles().forEach(roleKey -> {
+        userCR.getRoles().forEach(roleKey -> {
             Role role = roleDAO.find(roleKey);
             if (role == null) {
                 LOG.warn("Ignoring unknown role with id {}", roleKey);
@@ -179,10 +182,10 @@ public class UserDataBinderImpl extends AbstractAnyDataBinder implements UserDat
         });
 
         // realm
-        Realm realm = realmDAO.findByFullPath(userTO.getRealm());
+        Realm realm = realmDAO.findByFullPath(userCR.getRealm());
         if (realm == null) {
             SyncopeClientException noRealm = SyncopeClientException.build(ClientExceptionType.InvalidRealm);
-            noRealm.getElements().add("Invalid or null realm specified: " + userTO.getRealm());
+            noRealm.getElements().add("Invalid or null realm specified: " + userCR.getRealm());
             scce.addException(noRealm);
         }
         user.setRealm(realm);
@@ -190,7 +193,7 @@ public class UserDataBinderImpl extends AbstractAnyDataBinder implements UserDat
         AnyUtils anyUtils = anyUtilsFactory.getInstance(AnyTypeKind.USER);
         if (user.getRealm() != null) {
             // relationships
-            userTO.getRelationships().forEach(relationshipTO -> {
+            userCR.getRelationships().forEach(relationshipTO -> {
                 AnyObject otherEnd = anyObjectDAO.find(relationshipTO.getOtherEndKey());
                 if (otherEnd == null) {
                     LOG.debug("Ignoring invalid anyObject " + relationshipTO.getOtherEndKey());
@@ -217,7 +220,7 @@ public class UserDataBinderImpl extends AbstractAnyDataBinder implements UserDat
             });
 
             // memberships
-            userTO.getMemberships().forEach(membershipTO -> {
+            userCR.getMemberships().forEach(membershipTO -> {
                 Group group = membershipTO.getGroupKey() == null
                         ? groupDAO.findByName(membershipTO.getGroupName())
                         : groupDAO.find(membershipTO.getGroupKey());
@@ -245,7 +248,7 @@ public class UserDataBinderImpl extends AbstractAnyDataBinder implements UserDat
         }
 
         // attributes and resources
-        fill(user, userTO, anyUtils, scce);
+        fill(user, userCR, anyUtils, scce);
 
         // Throw composite exception if there is at least one element set in the composing exceptions
         if (scce.hasExceptions()) {
@@ -265,7 +268,7 @@ public class UserDataBinderImpl extends AbstractAnyDataBinder implements UserDat
     }
 
     @Override
-    public PropagationByResource update(final User toBeUpdated, final UserPatch userPatch) {
+    public PropagationByResource update(final User toBeUpdated, final UserUR userUR) {
         // Re-merge any pending change from workflow tasks
         User user = userDAO.save(toBeUpdated);
 
@@ -281,30 +284,30 @@ public class UserDataBinderImpl extends AbstractAnyDataBinder implements UserDat
         Map<String, String> oldConnObjectKeys = getConnObjectKeys(user, anyUtils);
 
         // realm
-        setRealm(user, userPatch);
+        setRealm(user, userUR);
 
         // password
-        if (userPatch.getPassword() != null && StringUtils.isNotBlank(userPatch.getPassword().getValue())) {
-            if (userPatch.getPassword().isOnSyncope()) {
-                setPassword(user, userPatch.getPassword().getValue(), scce);
+        if (userUR.getPassword() != null && StringUtils.isNotBlank(userUR.getPassword().getValue())) {
+            if (userUR.getPassword().isOnSyncope()) {
+                setPassword(user, userUR.getPassword().getValue(), scce);
                 user.setChangePwdDate(new Date());
             }
 
-            propByRes.addAll(ResourceOperation.UPDATE, userPatch.getPassword().getResources());
+            propByRes.addAll(ResourceOperation.UPDATE, userUR.getPassword().getResources());
         }
 
         // username
-        if (userPatch.getUsername() != null && StringUtils.isNotBlank(userPatch.getUsername().getValue())) {
+        if (userUR.getUsername() != null && StringUtils.isNotBlank(userUR.getUsername().getValue())) {
             String oldUsername = user.getUsername();
-            user.setUsername(userPatch.getUsername().getValue());
+            user.setUsername(userUR.getUsername().getValue());
 
             if (oldUsername.equals(AuthContextUtils.getUsername())) {
-                AuthContextUtils.updateUsername(userPatch.getUsername().getValue());
+                AuthContextUtils.updateUsername(userUR.getUsername().getValue());
             }
 
             AccessToken accessToken = accessTokenDAO.findByOwner(oldUsername);
             if (accessToken != null) {
-                accessToken.setOwner(userPatch.getUsername().getValue());
+                accessToken.setOwner(userUR.getUsername().getValue());
                 accessTokenDAO.save(accessToken);
             }
 
@@ -312,26 +315,35 @@ public class UserDataBinderImpl extends AbstractAnyDataBinder implements UserDat
         }
 
         // security question / answer:
-        if (userPatch.getSecurityQuestion() != null) {
-            if (userPatch.getSecurityQuestion().getValue() == null) {
+        if (userUR.getSecurityQuestion() != null) {
+            if (userUR.getSecurityQuestion().getValue() == null) {
                 user.setSecurityQuestion(null);
                 user.setSecurityAnswer(null);
             } else {
                 SecurityQuestion securityQuestion =
-                        securityQuestionDAO.find(userPatch.getSecurityQuestion().getValue());
+                        securityQuestionDAO.find(userUR.getSecurityQuestion().getValue());
                 if (securityQuestion != null) {
                     user.setSecurityQuestion(securityQuestion);
-                    user.setSecurityAnswer(userPatch.getSecurityAnswer().getValue());
+                    user.setSecurityAnswer(userUR.getSecurityAnswer().getValue());
                 }
             }
         }
 
-        if (userPatch.getMustChangePassword() != null) {
-            user.setMustChangePassword(userPatch.getMustChangePassword().getValue());
+        if (userUR.getMustChangePassword() != null) {
+            user.setMustChangePassword(userUR.getMustChangePassword().getValue());
+
+            propByRes.addAll(
+                    ResourceOperation.UPDATE,
+                    anyUtils.getAllResources(toBeUpdated).stream().
+                            filter(resource -> resource.getProvision(toBeUpdated.getType()).isPresent()).
+                            filter(resource -> mappingManager.hasMustChangePassword(
+                            resource.getProvision(toBeUpdated.getType()).get())).
+                            map(Entity::getKey).
+                            collect(Collectors.toSet()));
         }
 
         // roles
-        for (StringPatchItem patch : userPatch.getRoles()) {
+        for (StringPatchItem patch : userUR.getRoles()) {
             Role role = roleDAO.find(patch.getValue());
             if (role == null) {
                 LOG.warn("Ignoring unknown role with key {}", patch.getValue());
@@ -349,10 +361,10 @@ public class UserDataBinderImpl extends AbstractAnyDataBinder implements UserDat
         }
 
         // attributes and resources
-        propByRes.merge(fill(user, userPatch, anyUtils, scce));
+        propByRes.merge(fill(user, userUR, anyUtils, scce));
 
         // relationships
-        userPatch.getRelationships().stream().
+        userUR.getRelationships().stream().
                 filter(patch -> patch.getRelationshipTO() != null).forEachOrdered((patch) -> {
             RelationshipType relationshipType = relationshipTypeDAO.find(patch.getRelationshipTO().getType());
             if (relationshipType == null) {
@@ -409,7 +421,7 @@ public class UserDataBinderImpl extends AbstractAnyDataBinder implements UserDat
         SyncopeClientException invalidValues = SyncopeClientException.build(ClientExceptionType.InvalidValues);
 
         // memberships
-        userPatch.getMemberships().stream().
+        userUR.getMemberships().stream().
                 filter(membPatch -> membPatch.getGroup() != null).forEachOrdered((membPatch) -> {
             user.getMembership(membPatch.getGroup()).ifPresent(membership -> {
                 user.remove(membership);
@@ -418,6 +430,8 @@ public class UserDataBinderImpl extends AbstractAnyDataBinder implements UserDat
                     user.remove(attr);
                     attr.setOwner(null);
                     attr.setMembership(null);
+                    plainAttrValueDAO.deleteAll(attr, anyUtils);
+                    plainAttrDAO.delete(attr);
                 });
 
                 if (membPatch.getOperation() == PatchOperation.DELETE) {
@@ -457,7 +471,7 @@ public class UserDataBinderImpl extends AbstractAnyDataBinder implements UserDat
                                 attr.setSchema(schema);
                                 user.add(attr);
 
-                                AttrPatch patch = new AttrPatch.Builder().attrTO(attrTO).build();
+                                AttrPatch patch = new AttrPatch.Builder(attrTO).build();
                                 processAttrPatch(
                                         user, patch, schema, attr, anyUtils,
                                         resources, propByRes, invalidValues);
@@ -473,13 +487,13 @@ public class UserDataBinderImpl extends AbstractAnyDataBinder implements UserDat
                     // SYNCOPE-686: if password is invertible and we are adding resources with password mapping,
                     // ensure that they are counted for password propagation
                     if (toBeUpdated.canDecodePassword()) {
-                        if (userPatch.getPassword() == null) {
-                            userPatch.setPassword(new PasswordPatch());
+                        if (userUR.getPassword() == null) {
+                            userUR.setPassword(new PasswordPatch());
                         }
                         group.getResources().stream().
                                 filter(resource -> isPasswordMapped(resource)).
                                 forEachOrdered(resource -> {
-                                    userPatch.getPassword().getResources().add(resource.getKey());
+                                    userUR.getPassword().getResources().add(resource.getKey());
                                 });
                     }
                 } else {
@@ -627,11 +641,9 @@ public class UserDataBinderImpl extends AbstractAnyDataBinder implements UserDat
 
             // dynamic memberships
             userTO.getDynMemberships().addAll(
-                    userDAO.findDynGroups(user.getKey()).stream().map(group -> {
-                        return new MembershipTO.Builder().
-                                group(group.getKey(), group.getName()).
-                                build();
-                    }).collect(Collectors.toList()));
+                    userDAO.findDynGroups(user.getKey()).stream().
+                            map(group -> new MembershipTO.Builder(group.getKey()).groupName(group.getName()).build()).
+                            collect(Collectors.toList()));
         }
 
         return userTO;
@@ -642,5 +654,4 @@ public class UserDataBinderImpl extends AbstractAnyDataBinder implements UserDat
     public UserTO getUserTO(final String key) {
         return getUserTO(userDAO.authFind(key), true);
     }
-
 }

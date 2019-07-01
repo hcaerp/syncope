@@ -18,9 +18,9 @@
  */
 package org.apache.syncope.core.workflow.api;
 
-import org.apache.syncope.common.lib.patch.GroupPatch;
+import org.apache.syncope.common.lib.request.GroupCR;
+import org.apache.syncope.common.lib.request.GroupUR;
 import org.apache.syncope.core.provisioning.api.WorkflowResult;
-import org.apache.syncope.common.lib.to.GroupTO;
 
 /**
  * Interface for calling underlying workflow implementations.
@@ -30,18 +30,18 @@ public interface GroupWorkflowAdapter extends WorkflowAdapter {
     /**
      * Create a group.
      *
-     * @param groupTO group to be created and whether to propagate it as active
+     * @param groupCR group to be created and whether to propagate it as active
      * @return group just created
      */
-    WorkflowResult<String> create(GroupTO groupTO);
+    WorkflowResult<String> create(GroupCR groupCR);
 
     /**
      * Update a group.
      *
-     * @param groupPatch modification set to be performed
+     * @param groupUR modification set to be performed
      * @return group just updated and propagations to be performed
      */
-    WorkflowResult<GroupPatch> update(GroupPatch groupPatch);
+    WorkflowResult<GroupUR> update(GroupUR groupUR);
 
     /**
      * Delete a group.

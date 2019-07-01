@@ -27,9 +27,9 @@ import java.util.Set;
 import org.apache.camel.Exchange;
 import org.apache.camel.PollingConsumer;
 import org.apache.commons.lang3.tuple.Pair;
-import org.apache.syncope.common.lib.patch.AnyObjectPatch;
+import org.apache.syncope.common.lib.request.AnyObjectCR;
+import org.apache.syncope.common.lib.request.AnyObjectUR;
 import org.apache.syncope.common.lib.to.PropagationStatus;
-import org.apache.syncope.common.lib.to.AnyObjectTO;
 import org.apache.syncope.core.provisioning.api.AnyObjectProvisioningManager;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,15 +38,15 @@ public class CamelAnyObjectProvisioningManager
         extends AbstractCamelProvisioningManager implements AnyObjectProvisioningManager {
 
     @Override
-    public Pair<String, List<PropagationStatus>> create(final AnyObjectTO any, final boolean nullPriorityAsync) {
-        return create(any, Collections.<String>emptySet(), nullPriorityAsync);
+    public Pair<String, List<PropagationStatus>> create(final AnyObjectCR req, final boolean nullPriorityAsync) {
+        return create(req, Collections.<String>emptySet(), nullPriorityAsync);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     @Override
     @SuppressWarnings("unchecked")
     public Pair<String, List<PropagationStatus>> create(
-            final AnyObjectTO anyObjectTO, final Set<String> excludedResources, final boolean nullPriorityAsync) {
+            final AnyObjectCR req, final Set<String> excludedResources, final boolean nullPriorityAsync) {
 
         PollingConsumer pollingConsumer = getConsumer("direct:createAnyObjectPort");
 
@@ -54,7 +54,7 @@ public class CamelAnyObjectProvisioningManager
         props.put("excludedResources", excludedResources);
         props.put("nullPriorityAsync", nullPriorityAsync);
 
-        sendMessage("direct:createAnyObject", anyObjectTO, props);
+        sendMessage("direct:createAnyObject", req, props);
 
         Exchange exchange = pollingConsumer.receive();
 
@@ -66,17 +66,17 @@ public class CamelAnyObjectProvisioningManager
     }
 
     @Override
-    public Pair<AnyObjectPatch, List<PropagationStatus>> update(
-            final AnyObjectPatch anyPatch, final boolean nullPriorityAsync) {
+    public Pair<AnyObjectUR, List<PropagationStatus>> update(
+            final AnyObjectUR anyUR, final boolean nullPriorityAsync) {
 
-        return update(anyPatch, Collections.<String>emptySet(), nullPriorityAsync);
+        return update(anyUR, Collections.<String>emptySet(), nullPriorityAsync);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     @Override
     @SuppressWarnings("unchecked")
-    public Pair<AnyObjectPatch, List<PropagationStatus>> update(
-            final AnyObjectPatch anyPatch, final Set<String> excludedResources, final boolean nullPriorityAsync) {
+    public Pair<AnyObjectUR, List<PropagationStatus>> update(
+            final AnyObjectUR anyUR, final Set<String> excludedResources, final boolean nullPriorityAsync) {
 
         PollingConsumer pollingConsumer = getConsumer("direct:updateAnyObjectPort");
 
@@ -84,7 +84,7 @@ public class CamelAnyObjectProvisioningManager
         props.put("excludedResources", excludedResources);
         props.put("nullPriorityAsync", nullPriorityAsync);
 
-        sendMessage("direct:updateAnyObject", anyPatch, props);
+        sendMessage("direct:updateAnyObject", anyUR, props);
 
         Exchange exchange = pollingConsumer.receive();
 
@@ -124,10 +124,10 @@ public class CamelAnyObjectProvisioningManager
     }
 
     @Override
-    public String unlink(final AnyObjectPatch anyObjectPatch) {
+    public String unlink(final AnyObjectUR anyObjectUR) {
         PollingConsumer pollingConsumer = getConsumer("direct:unlinkAnyObjectPort");
 
-        sendMessage("direct:unlinkAnyObject", anyObjectPatch);
+        sendMessage("direct:unlinkAnyObject", anyObjectUR);
 
         Exchange exchange = pollingConsumer.receive();
 
@@ -135,14 +135,14 @@ public class CamelAnyObjectProvisioningManager
             throw (RuntimeException) exchange.getProperty(Exchange.EXCEPTION_CAUGHT);
         }
 
-        return exchange.getIn().getBody(AnyObjectPatch.class).getKey();
+        return exchange.getIn().getBody(AnyObjectUR.class).getKey();
     }
 
     @Override
-    public String link(final AnyObjectPatch anyObjectPatch) {
+    public String link(final AnyObjectUR anyObjectUR) {
         PollingConsumer pollingConsumer = getConsumer("direct:linkAnyObjectPort");
 
-        sendMessage("direct:linkAnyObject", anyObjectPatch);
+        sendMessage("direct:linkAnyObject", anyObjectUR);
 
         Exchange exchange = pollingConsumer.receive();
 
@@ -150,7 +150,7 @@ public class CamelAnyObjectProvisioningManager
             throw (RuntimeException) exchange.getProperty(Exchange.EXCEPTION_CAUGHT);
         }
 
-        return exchange.getIn().getBody(AnyObjectPatch.class).getKey();
+        return exchange.getIn().getBody(AnyObjectUR.class).getKey();
     }
 
     @Override

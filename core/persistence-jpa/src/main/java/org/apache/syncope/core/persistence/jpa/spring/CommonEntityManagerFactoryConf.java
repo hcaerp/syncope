@@ -20,25 +20,19 @@ package org.apache.syncope.core.persistence.jpa.spring;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import javax.persistence.ValidationMode;
 import javax.sql.DataSource;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.syncope.core.persistence.api.DomainsHolder;
-import org.springframework.beans.BeansException;
-import org.springframework.beans.factory.InitializingBean;
-import org.springframework.context.ApplicationContext;
-import org.springframework.context.ApplicationContextAware;
 import org.springframework.orm.jpa.persistenceunit.PersistenceUnitPostProcessor;
+import org.apache.syncope.core.persistence.api.DomainHolder;
 
 /**
  * Container for common configuration options among all EntityManagerFactory entities (one for each domain).
  * Acts as a commodity place for fetching each domain's {@link DataSource}..
  */
-public class CommonEntityManagerFactoryConf implements DomainsHolder, InitializingBean, ApplicationContextAware {
+public class CommonEntityManagerFactoryConf implements DomainHolder {
 
-    private ApplicationContext ctx;
-
-    private final Map<String, DataSource> domains = new HashMap<>();
+    private final Map<String, DataSource> domains = new ConcurrentHashMap<>();
 
     private String[] packagesToScan;
 
@@ -47,22 +41,6 @@ public class CommonEntityManagerFactoryConf implements DomainsHolder, Initializi
     private PersistenceUnitPostProcessor[] postProcessors;
 
     private final Map<String, Object> jpaPropertyMap = new HashMap<>();
-
-    @Override
-    public void setApplicationContext(final ApplicationContext ctx) throws BeansException {
-        this.ctx = ctx;
-    }
-
-    @Override
-    public void afterPropertiesSet() {
-        for (Map.Entry<String, DataSource> entry : ctx.getBeansOfType(DataSource.class).entrySet()) {
-            if (!entry.getKey().startsWith("local")) {
-                this.domains.put(
-                        StringUtils.substringBefore(entry.getKey(), DataSource.class.getSimpleName()),
-                        entry.getValue());
-            }
-        }
-    }
 
     @Override
     public Map<String, DataSource> getDomains() {
@@ -102,5 +80,4 @@ public class CommonEntityManagerFactoryConf implements DomainsHolder, Initializi
             this.jpaPropertyMap.putAll(jpaProperties);
         }
     }
-
 }

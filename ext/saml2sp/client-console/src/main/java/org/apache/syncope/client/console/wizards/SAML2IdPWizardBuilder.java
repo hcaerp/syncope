@@ -22,19 +22,30 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.Future;
+import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.tuple.Pair;
+import org.apache.syncope.client.console.SyncopeConsoleSession;
+import org.apache.syncope.client.console.SyncopeWebApplication;
 import org.apache.syncope.client.console.panels.SAML2IdPsDirectoryPanel;
+import org.apache.syncope.client.console.rest.ImplementationRestClient;
 import org.apache.syncope.client.console.rest.SAML2IdPsRestClient;
-import org.apache.syncope.client.console.wicket.markup.html.form.AjaxCheckBoxPanel;
-import org.apache.syncope.client.console.wicket.markup.html.form.AjaxDropDownChoicePanel;
-import org.apache.syncope.client.console.wicket.markup.html.form.AjaxPalettePanel;
-import org.apache.syncope.client.console.wicket.markup.html.form.AjaxTextFieldPanel;
-import org.apache.syncope.client.console.wicket.markup.html.form.FieldPanel;
 import org.apache.syncope.client.console.wizards.resources.JEXLTransformersTogglePanel;
 import org.apache.syncope.client.console.wizards.resources.ItemTransformersTogglePanel;
+import org.apache.syncope.client.console.wizards.resources.SAML2IdPMappingPanel;
+import org.apache.syncope.client.ui.commons.markup.html.form.AjaxCheckBoxPanel;
+import org.apache.syncope.client.ui.commons.markup.html.form.AjaxDropDownChoicePanel;
+import org.apache.syncope.client.ui.commons.markup.html.form.AjaxPalettePanel;
+import org.apache.syncope.client.ui.commons.markup.html.form.AjaxTextFieldPanel;
+import org.apache.syncope.client.ui.commons.markup.html.form.FieldPanel;
+import org.apache.syncope.client.ui.commons.wizards.AjaxWizardBuilder;
+import org.apache.syncope.common.lib.to.EntityTO;
 import org.apache.syncope.common.lib.to.ItemTO;
 import org.apache.syncope.common.lib.to.SAML2IdPTO;
 import org.apache.syncope.common.lib.types.SAML2BindingType;
+import org.apache.syncope.common.lib.types.SAML2SPImplementationType;
 import org.apache.wicket.Component;
 import org.apache.wicket.PageReference;
 import org.apache.wicket.extensions.wizard.WizardModel;
@@ -54,15 +65,29 @@ public class SAML2IdPWizardBuilder extends AjaxWizardBuilder<SAML2IdPTO> {
 
     private final SAML2IdPsRestClient restClient = new SAML2IdPsRestClient();
 
+    private final ImplementationRestClient implRestClient = new ImplementationRestClient();
+
     private final SAML2IdPsDirectoryPanel directoryPanel;
 
-    private final IModel<List<String>> actionsClasses = new LoadableDetachableModel<List<String>>() {
+    private final IModel<List<String>> idpActions = new LoadableDetachableModel<List<String>>() {
 
         private static final long serialVersionUID = 5275935387613157437L;
 
         @Override
         protected List<String> load() {
-            return new ArrayList<>(restClient.getActionsClasses());
+            return implRestClient.list(SAML2SPImplementationType.IDP_ACTIONS).stream().
+                    map(EntityTO::getKey).sorted().collect(Collectors.toList());
+        }
+    };
+
+    private final IModel<List<String>> requestedAuthnContextProviders = new LoadableDetachableModel<List<String>>() {
+
+        private static final long serialVersionUID = 4659376149825914247L;
+
+        @Override
+        protected List<String> load() {
+            return implRestClient.list(SAML2SPImplementationType.REQUESTED_AUTHN_CONTEXT_PROVIDER).stream().
+                    map(EntityTO::getKey).sorted().collect(Collectors.toList());
         }
     };
 
@@ -89,6 +114,27 @@ public class SAML2IdPWizardBuilder extends AjaxWizardBuilder<SAML2IdPTO> {
         wizardModel.add(mapping);
 
         return wizardModel;
+    }
+
+    @Override
+    protected long getMaxWaitTimeInSeconds() {
+        return SyncopeWebApplication.get().getMaxWaitTimeInSeconds();
+    }
+
+    @Override
+    protected void sendError(final String message) {
+        SyncopeConsoleSession.get().error(message);
+    }
+
+    @Override
+    protected void sendWarning(final String message) {
+        SyncopeConsoleSession.get().warn(message);
+    }
+
+    @Override
+    protected Future<Pair<Serializable, Serializable>> execute(
+            final Callable<Pair<Serializable, Serializable>> future) {
+        return SyncopeConsoleSession.get().execute(future);
     }
 
     private final class IdP extends WizardStep {
@@ -131,21 +177,21 @@ public class SAML2IdPWizardBuilder extends AjaxWizardBuilder<SAML2IdPTO> {
             bindingType.setChoices(Arrays.asList(SAML2BindingType.values()));
             fields.add(bindingType);
 
-            AjaxTextFieldPanel requestedAuthnContextProviderClassName = new AjaxTextFieldPanel(
-                    "field", "requestedAuthnContextProviderClassName",
-                    new PropertyModel<String>(idpTO, "requestedAuthnContextProviderClassName"));
-            requestedAuthnContextProviderClassName.setChoices(
-                    new ArrayList<>(restClient.getRequestedAuthnContextProviderClasses()));
-            fields.add(requestedAuthnContextProviderClassName);
+            AjaxTextFieldPanel requestedAuthnContextProvider = new AjaxTextFieldPanel(
+                    "field", "requestedAuthnContextProvider",
+                    new PropertyModel<>(idpTO, "requestedAuthnContextProvider"));
+            requestedAuthnContextProvider.setChoices(
+                    requestedAuthnContextProviders.getObject());
+            fields.add(requestedAuthnContextProvider);
 
-            AjaxPalettePanel<String> actionsClassNames = new AjaxPalettePanel.Builder<String>().
+            AjaxPalettePanel<String> actions = new AjaxPalettePanel.Builder<String>().
                     setAllowMoveAll(true).setAllowOrder(true).
-                    setName(new StringResourceModel("actionsClassNames", directoryPanel).getString()).
+                    setName(new StringResourceModel("actions", directoryPanel).getString()).
                     build("field",
-                            new PropertyModel<>(idpTO, "actionsClassNames"),
-                            new ListModel<>(actionsClasses.getObject()));
-            actionsClassNames.setOutputMarkupId(true);
-            fields.add(actionsClassNames);
+                            new PropertyModel<>(idpTO, "actions"),
+                            new ListModel<>(idpActions.getObject()));
+            actions.setOutputMarkupId(true);
+            fields.add(actions);
 
             add(new ListView<Component>("fields", fields) {
 

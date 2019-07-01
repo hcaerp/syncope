@@ -25,34 +25,28 @@ import org.apache.syncope.common.lib.policy.PasswordRuleConf;
 import org.apache.syncope.common.lib.policy.PullCorrelationRuleConf;
 import org.apache.syncope.common.lib.policy.PushCorrelationRuleConf;
 import org.apache.syncope.common.lib.report.ReportletConf;
-import org.apache.syncope.common.lib.types.ImplementationType;
 import org.apache.syncope.core.persistence.api.ImplementationLookup;
 import org.apache.syncope.core.persistence.api.dao.AccountRule;
 import org.apache.syncope.core.persistence.api.dao.PasswordRule;
 import org.apache.syncope.core.persistence.api.dao.PullCorrelationRule;
 import org.apache.syncope.core.persistence.api.dao.PushCorrelationRule;
 import org.apache.syncope.core.persistence.api.dao.Reportlet;
-import org.apache.syncope.core.persistence.jpa.dao.DefaultAccountRule;
-import org.apache.syncope.core.persistence.jpa.dao.DefaultPasswordRule;
 import org.apache.syncope.core.persistence.jpa.dao.DefaultPullCorrelationRule;
 import org.apache.syncope.core.persistence.jpa.dao.DefaultPushCorrelationRule;
+import org.apache.syncope.core.spring.policy.DefaultAccountRule;
+import org.apache.syncope.core.spring.policy.DefaultPasswordRule;
 import org.springframework.stereotype.Component;
 
 @Component
 public class DummyImplementationLookup implements ImplementationLookup {
 
     @Override
-    public Integer getPriority() {
+    public int getOrder() {
         return -1;
     }
 
     @Override
-    public void load() {
-        // do nothing
-    }
-
-    @Override
-    public Set<String> getClassNames(final ImplementationType type) {
+    public Set<String> getClassNames(final String type) {
         return Collections.emptySet();
     }
 

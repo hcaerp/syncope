@@ -27,16 +27,19 @@ import java.util.stream.Collectors;
 import org.apache.commons.lang3.SerializationUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.syncope.common.lib.AnyOperations;
+import org.apache.syncope.common.lib.Attr;
+import org.apache.syncope.common.lib.EntityTOUtils;
 import org.apache.syncope.common.lib.SyncopeConstants;
-import org.apache.syncope.common.lib.patch.UserPatch;
-import org.apache.syncope.common.lib.to.AttrTO;
+import org.apache.syncope.common.lib.request.UserCR;
+import org.apache.syncope.common.lib.request.UserUR;
 import org.apache.syncope.common.lib.to.OIDCLoginResponseTO;
 import org.apache.syncope.common.lib.to.PropagationStatus;
 import org.apache.syncope.common.lib.to.UserTO;
 import org.apache.syncope.common.lib.types.AnyTypeKind;
+import org.apache.syncope.common.lib.types.SchemaType;
 import org.apache.syncope.core.persistence.api.attrvalue.validation.ParsingValidationException;
-import org.apache.syncope.core.persistence.api.dao.PlainSchemaDAO;
 import org.apache.syncope.core.persistence.api.dao.UserDAO;
+import org.apache.syncope.core.persistence.api.entity.DerSchema;
 import org.apache.syncope.core.persistence.api.entity.EntityFactory;
 import org.apache.syncope.core.persistence.api.entity.OIDCProvider;
 import org.apache.syncope.core.persistence.api.entity.OIDCProviderItem;
@@ -52,11 +55,10 @@ import org.apache.syncope.core.provisioning.api.data.UserDataBinder;
 import org.apache.syncope.core.provisioning.java.IntAttrNameParser;
 import org.apache.syncope.core.provisioning.java.utils.MappingUtils;
 import org.apache.syncope.core.provisioning.java.utils.TemplateUtils;
-import org.apache.syncope.core.spring.ApplicationContextProvider;
+import org.apache.syncope.core.spring.ImplementationManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.support.AbstractBeanDefinition;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -68,9 +70,6 @@ public class OIDCUserManager {
 
     @Autowired
     private UserDAO userDAO;
-
-    @Autowired
-    private PlainSchemaDAO plainSchemaDAO;
 
     @Autowired
     private IntAttrNameParser intAttrNameParser;
@@ -133,24 +132,25 @@ public class OIDCUserManager {
                 case PLAIN:
                     PlainAttrValue value = entityFactory.newEntity(UPlainAttrValue.class);
 
-                    PlainSchema schema = plainSchemaDAO.find(intAttrName.getSchemaName());
-                    if (schema == null) {
+                    if (intAttrName.getSchemaType() == SchemaType.PLAIN) {
                         value.setStringValue(transformed);
                     } else {
                         try {
-                            value.parseValue(schema, transformed);
+                            value.parseValue((PlainSchema) intAttrName.getSchema(), transformed);
                         } catch (ParsingValidationException e) {
                             LOG.error("While parsing provided key value {}", transformed, e);
                             value.setStringValue(transformed);
                         }
                     }
 
-                    result.addAll(userDAO.findByPlainAttrValue(intAttrName.getSchemaName(), value, false).stream().
+                    result.addAll(userDAO.findByPlainAttrValue(
+                            (PlainSchema) intAttrName.getSchema(), value, false).stream().
                             map(User::getUsername).collect(Collectors.toList()));
                     break;
 
                 case DERIVED:
-                    result.addAll(userDAO.findByDerAttrValue(intAttrName.getSchemaName(), transformed, false).stream().
+                    result.addAll(userDAO.findByDerAttrValue(
+                            (DerSchema) intAttrName.getSchema(), transformed, false).stream().
                             map(User::getUsername).collect(Collectors.toList()));
                     break;
 
@@ -163,16 +163,11 @@ public class OIDCUserManager {
 
     private List<OIDCProviderActions> getActions(final OIDCProvider op) {
         List<OIDCProviderActions> actions = new ArrayList<>();
-
-        op.getActionsClassNames().forEach(className -> {
+        op.getActions().forEach(impl -> {
             try {
-                Class<?> actionsClass = Class.forName(className);
-                OIDCProviderActions opActions = (OIDCProviderActions) ApplicationContextProvider.getBeanFactory().
-                        createBean(actionsClass, AbstractBeanDefinition.AUTOWIRE_BY_TYPE, true);
-
-                actions.add(opActions);
+                actions.add(ImplementationManager.build(impl));
             } catch (Exception e) {
-                LOG.warn("Class '{}' not found", className, e);
+                LOG.warn("While building {}", impl, e);
             }
         });
 
@@ -181,10 +176,10 @@ public class OIDCUserManager {
 
     public void fill(final OIDCProvider op, final OIDCLoginResponseTO responseTO, final UserTO userTO) {
         op.getItems().forEach(item -> {
-            List<String> values = Collections.emptyList();
-            Optional<AttrTO> oidcAttr = responseTO.getAttr(item.getExtAttrName());
+            List<String> values = new ArrayList<>();
+            Optional<Attr> oidcAttr = responseTO.getAttr(item.getExtAttrName());
             if (oidcAttr.isPresent() && !oidcAttr.get().getValues().isEmpty()) {
-                values = oidcAttr.get().getValues();
+                values.addAll(oidcAttr.get().getValues());
 
                 List<Object> transformed = new ArrayList<>(values);
                 for (ItemTransformer transformer : MappingUtils.getItemTransformers(item)) {
@@ -219,18 +214,18 @@ public class OIDCUserManager {
             } else if (intAttrName != null && intAttrName.getSchemaType() != null) {
                 switch (intAttrName.getSchemaType()) {
                     case PLAIN:
-                        Optional<AttrTO> attr = userTO.getPlainAttr(intAttrName.getSchemaName());
+                        Optional<Attr> attr = userTO.getPlainAttr(intAttrName.getSchema().getKey());
                         if (attr.isPresent()) {
                             attr.get().getValues().clear();
                         } else {
-                            attr = Optional.of(new AttrTO.Builder().schema(intAttrName.getSchemaName()).build());
+                            attr = Optional.of(new Attr.Builder(intAttrName.getSchema().getKey()).build());
                             userTO.getPlainAttrs().add(attr.get());
                         }
                         attr.get().getValues().addAll(values);
                         break;
 
                     default:
-                        LOG.warn("Unsupported: {} {}", intAttrName.getSchemaType(), intAttrName.getSchemaName());
+                        LOG.warn("Unsupported: {} {}", intAttrName.getSchemaType(), intAttrName.getSchema().getKey());
                 }
             }
         });
@@ -238,27 +233,30 @@ public class OIDCUserManager {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public String create(final OIDCProvider op, final OIDCLoginResponseTO responseTO, final String email) {
-        UserTO userTO = new UserTO();
+        UserCR userCR = new UserCR();
+        userCR.setStorePassword(false);
 
         if (op.getUserTemplate() != null && op.getUserTemplate().get() != null) {
-            templateUtils.apply(userTO, op.getUserTemplate().get());
+            templateUtils.apply(userCR, op.getUserTemplate().get());
         }
 
         List<OIDCProviderActions> actions = getActions(op);
         for (OIDCProviderActions action : actions) {
-            userTO = action.beforeCreate(userTO, responseTO);
+            userCR = action.beforeCreate(userCR, responseTO);
         }
 
+        UserTO userTO = new UserTO();
         fill(op, responseTO, userTO);
+        EntityTOUtils.toAnyCR(userTO, userCR);
 
-        if (userTO.getRealm() == null) {
-            userTO.setRealm(SyncopeConstants.ROOT_REALM);
+        if (userCR.getRealm() == null) {
+            userCR.setRealm(SyncopeConstants.ROOT_REALM);
         }
-        if (userTO.getUsername() == null) {
-            userTO.setUsername(email);
+        if (userCR.getUsername() == null) {
+            userCR.setUsername(email);
         }
 
-        Pair<String, List<PropagationStatus>> created = provisioningManager.create(userTO, false, false);
+        Pair<String, List<PropagationStatus>> created = provisioningManager.create(userCR, false);
         userTO = binder.getUserTO(created.getKey());
 
         for (OIDCProviderActions action : actions) {
@@ -275,14 +273,14 @@ public class OIDCUserManager {
 
         fill(op, responseTO, userTO);
 
-        UserPatch userPatch = AnyOperations.diff(userTO, original, true);
+        UserUR userUR = AnyOperations.diff(userTO, original, true);
 
         List<OIDCProviderActions> actions = getActions(op);
         for (OIDCProviderActions action : actions) {
-            userPatch = action.beforeUpdate(userPatch, responseTO);
+            userUR = action.beforeUpdate(userUR, responseTO);
         }
 
-        Pair<UserPatch, List<PropagationStatus>> updated = provisioningManager.update(userPatch, false);
+        Pair<UserUR, List<PropagationStatus>> updated = provisioningManager.update(userUR, false);
         userTO = binder.getUserTO(updated.getLeft().getKey());
 
         for (OIDCProviderActions action : actions) {

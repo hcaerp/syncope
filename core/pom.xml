@@ -77,17 +77,17 @@ under the License.
   </profiles>
   
   <modules>
+    <module>idrepo</module>
+    <module>idm</module>
+    <module>am</module>
     <module>persistence-api</module>
     <module>persistence-jpa</module>
-    <module>persistence-jpa-pgjsonb</module>
+    <module>persistence-jpa-json</module>
     <module>spring</module>
     <module>provisioning-api</module>
     <module>provisioning-java</module>
     <module>workflow-api</module>
     <module>workflow-java</module>
-    <module>logic</module>
-    <module>rest-cxf</module>
-    <module>upgrade</module>
+    <module>starter</module>
   </modules>
-
 </project>

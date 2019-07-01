@@ -25,11 +25,11 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 import org.apache.syncope.common.lib.types.AnyTypeKind;
+import org.apache.syncope.common.lib.types.SchemaType;
 import org.apache.syncope.core.persistence.api.attrvalue.validation.ParsingValidationException;
 import org.apache.syncope.core.persistence.api.dao.AnyObjectDAO;
 import org.apache.syncope.core.persistence.api.dao.AnySearchDAO;
 import org.apache.syncope.core.persistence.api.dao.GroupDAO;
-import org.apache.syncope.core.persistence.api.dao.PlainSchemaDAO;
 import org.apache.syncope.core.persistence.api.dao.PullCorrelationRule;
 import org.apache.syncope.core.persistence.api.dao.RealmDAO;
 import org.apache.syncope.core.persistence.api.dao.UserDAO;
@@ -41,6 +41,7 @@ import org.apache.syncope.core.persistence.api.entity.AnyType;
 import org.apache.syncope.core.persistence.api.entity.AnyUtils;
 import org.apache.syncope.core.persistence.api.entity.AnyUtilsFactory;
 import org.apache.syncope.core.persistence.api.entity.Entity;
+import org.apache.syncope.core.persistence.api.entity.DerSchema;
 import org.apache.syncope.core.persistence.api.entity.PlainAttrValue;
 import org.apache.syncope.core.persistence.api.entity.PlainSchema;
 import org.apache.syncope.core.persistence.api.entity.Realm;
@@ -67,6 +68,10 @@ import org.identityconnectors.framework.common.objects.Name;
 import org.identityconnectors.framework.common.objects.OperationalAttributes;
 import org.identityconnectors.framework.common.objects.SearchResult;
 import org.identityconnectors.framework.common.objects.filter.FilterBuilder;
+import org.identityconnectors.framework.common.objects.SyncDelta;
+import org.identityconnectors.framework.common.objects.SyncDeltaBuilder;
+import org.identityconnectors.framework.common.objects.SyncDeltaType;
+import org.identityconnectors.framework.common.objects.SyncToken;
 import org.identityconnectors.framework.spi.SearchResultsHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -79,12 +84,6 @@ import org.springframework.transaction.annotation.Transactional;
 public class PullUtils {
 
     private static final Logger LOG = LoggerFactory.getLogger(PullUtils.class);
-
-    /**
-     * Schema DAO.
-     */
-    @Autowired
-    private PlainSchemaDAO plainSchemaDAO;
 
     /**
      * Any Object DAO.
@@ -163,7 +162,13 @@ public class PullUtils {
 
             ConnectorObject connObj = found.iterator().next();
             try {
-                List<String> anyKeys = match(connObj, provision.get(), anyUtils);
+                List<String> anyKeys = match(
+                        new SyncDeltaBuilder().
+                                setToken(new SyncToken("")).
+                                setDeltaType(SyncDeltaType.CREATE_OR_UPDATE).
+                                setObject(connObj).
+                                build(),
+                        provision.get(), anyUtils);
                 if (anyKeys.isEmpty()) {
                     LOG.debug("No matching {} found for {}, aborting", anyUtils.anyTypeKind(), connObj);
                 } else {
@@ -182,13 +187,14 @@ public class PullUtils {
     }
 
     private List<String> findByConnObjectKey(
-            final ConnectorObject connObj, final Provision provision, final AnyUtils anyUtils) {
+            final SyncDelta syncDelta, final Provision provision, final AnyUtils anyUtils) {
 
         String connObjectKey = null;
 
         Optional<? extends MappingItem> connObjectKeyItem = MappingUtils.getConnObjectKeyItem(provision);
         if (connObjectKeyItem.isPresent()) {
-            Attribute connObjectKeyAttr = connObj.getAttributeByName(connObjectKeyItem.get().getExtAttrName());
+            Attribute connObjectKeyAttr = syncDelta.getObject().
+                    getAttributeByName(connObjectKeyItem.get().getExtAttrName());
             if (connObjectKeyAttr != null) {
                 connObjectKey = AttributeUtil.getStringValue(connObjectKeyAttr);
             }
@@ -278,12 +284,11 @@ public class PullUtils {
                 case PLAIN:
                     PlainAttrValue value = anyUtils.newPlainAttrValue();
 
-                    PlainSchema schema = plainSchemaDAO.find(intAttrName.getSchemaName());
-                    if (schema == null) {
+                    if (intAttrName.getSchemaType() == SchemaType.PLAIN) {
                         value.setStringValue(connObjectKey);
                     } else {
                         try {
-                            value.parseValue(schema, connObjectKey);
+                            value.parseValue((PlainSchema) intAttrName.getSchema(), connObjectKey);
                         } catch (ParsingValidationException e) {
                             LOG.error("While parsing provided __UID__ {}", value, e);
                             value.setStringValue(connObjectKey);
@@ -291,13 +296,13 @@ public class PullUtils {
                     }
 
                     result.addAll(anyUtils.dao().findByPlainAttrValue(
-                            intAttrName.getSchemaName(), value, provision.isIgnoreCaseMatch()).
+                            (PlainSchema) intAttrName.getSchema(), value, provision.isIgnoreCaseMatch()).
                             stream().map(Entity::getKey).collect(Collectors.toList()));
                     break;
 
                 case DERIVED:
                     result.addAll(anyUtils.dao().findByDerAttrValue(
-                            intAttrName.getSchemaName(), connObjectKey, provision.isIgnoreCaseMatch()).
+                            (DerSchema) intAttrName.getSchema(), connObjectKey, provision.isIgnoreCaseMatch()).
                             stream().map(Entity::getKey).collect(Collectors.toList()));
                     break;
 
@@ -309,25 +314,25 @@ public class PullUtils {
     }
 
     private List<String> findByCorrelationRule(
-            final ConnectorObject connObj,
+            final SyncDelta syncDelta,
             final Provision provision,
             final PullCorrelationRule rule,
             final AnyTypeKind type) {
 
-        return searchDAO.search(rule.getSearchCond(connObj, provision), type).stream().
+        return searchDAO.search(rule.getSearchCond(syncDelta, provision), type).stream().
                 map(Entity::getKey).collect(Collectors.toList());
     }
 
     /**
      * Finds internal entities based on external attributes and mapping.
      *
-     * @param connObj external attributes
+     * @param syncDelta change operation, including external attributes
      * @param provision mapping
      * @param anyUtils any utils
      * @return list of matching users' / groups' / any objects' keys
      */
     public List<String> match(
-            final ConnectorObject connObj,
+            final SyncDelta syncDelta,
             final Provision provision,
             final AnyUtils anyUtils) {
 
@@ -346,10 +351,10 @@ public class PullUtils {
 
         try {
             return rule.isPresent()
-                    ? findByCorrelationRule(connObj, provision, rule.get(), anyUtils.anyTypeKind())
-                    : findByConnObjectKey(connObj, provision, anyUtils);
+                    ? findByCorrelationRule(syncDelta, provision, rule.get(), anyUtils.anyTypeKind())
+                    : findByConnObjectKey(syncDelta, provision, anyUtils);
         } catch (RuntimeException e) {
-            LOG.error("Could not match {} with any existing {}", connObj, provision.getAnyType(), e);
+            LOG.error("Could not match {} with any existing {}", syncDelta, provision.getAnyType(), e);
             return Collections.<String>emptyList();
         }
     }
@@ -357,19 +362,20 @@ public class PullUtils {
     /**
      * Finds internal realms based on external attributes and mapping.
      *
-     * @param connObj external attributes
+     * @param syncDelta change operation, including external attributes
      * @param orgUnit mapping
      * @return list of matching realms' keys.
      */
     public List<String> match(
-            final ConnectorObject connObj,
+            final SyncDelta syncDelta,
             final OrgUnit orgUnit) {
 
         String connObjectKey = null;
 
         Optional<? extends OrgUnitItem> connObjectKeyItem = orgUnit.getConnObjectKeyItem();
         if (connObjectKeyItem.isPresent()) {
-            Attribute connObjectKeyAttr = connObj.getAttributeByName(connObjectKeyItem.get().getExtAttrName());
+            Attribute connObjectKeyAttr = syncDelta.getObject().
+                    getAttributeByName(connObjectKeyItem.get().getExtAttrName());
             if (connObjectKeyAttr != null) {
                 connObjectKey = AttributeUtil.getStringValue(connObjectKeyAttr);
             }

@@ -27,10 +27,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.apache.commons.lang3.ClassUtils;
-import org.apache.syncope.common.lib.patch.AnyObjectPatch;
-import org.apache.syncope.common.lib.patch.AnyPatch;
-import org.apache.syncope.common.lib.patch.GroupPatch;
-import org.apache.syncope.common.lib.patch.UserPatch;
+import org.apache.syncope.common.lib.request.AnyCR;
+import org.apache.syncope.common.lib.request.AnyObjectCR;
+import org.apache.syncope.common.lib.request.AnyObjectUR;
+import org.apache.syncope.common.lib.request.AnyUR;
+import org.apache.syncope.common.lib.request.GroupCR;
+import org.apache.syncope.common.lib.request.GroupUR;
+import org.apache.syncope.common.lib.request.UserCR;
+import org.apache.syncope.common.lib.request.UserUR;
 import org.apache.syncope.common.lib.to.AnyObjectTO;
 import org.apache.syncope.common.lib.to.AnyTO;
 import org.apache.syncope.common.lib.to.GroupTO;
@@ -308,20 +312,43 @@ public class JPAAnyUtils implements AnyUtils {
     }
 
     @Override
-    public <P extends AnyPatch> P newAnyPatch(final String key) {
-        P result = null;
+    public <C extends AnyCR> C newAnyCR() {
+        C result = null;
 
         switch (anyTypeKind) {
             case USER:
-                result = (P) new UserPatch();
+                result = (C) new UserCR();
                 break;
 
             case GROUP:
-                result = (P) new GroupPatch();
+                result = (C) new GroupCR();
                 break;
 
             case ANY_OBJECT:
-                result = (P) new AnyObjectPatch();
+                result = (C) new AnyObjectCR();
+                break;
+
+            default:
+        }
+
+        return result;
+    }
+
+    @Override
+    public <U extends AnyUR> U newAnyUR(final String key) {
+        U result = null;
+
+        switch (anyTypeKind) {
+            case USER:
+                result = (U) new UserUR();
+                break;
+
+            case GROUP:
+                result = (U) new GroupUR();
+                break;
+
+            case ANY_OBJECT:
+                result = (U) new AnyObjectUR();
                 break;
 
             default:

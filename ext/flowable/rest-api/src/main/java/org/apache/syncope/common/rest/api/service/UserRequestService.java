@@ -92,6 +92,20 @@ public interface UserRequestService extends JAXRSService {
             @QueryParam("reason") String reason);
 
     /**
+     * Returns a user request form matching the given task id.
+     *
+     * @param username username of the logged user
+     * @param taskId workflow task id
+     * @return the form for the given task id
+     */
+    @GET
+    @Path("forms/{username}/{taskId}")
+    @Produces({ MediaType.APPLICATION_JSON, RESTHeaders.APPLICATION_YAML, MediaType.APPLICATION_XML })
+    UserRequestForm getForm(
+            @NotNull @PathParam("username") String username,
+            @NotNull @PathParam("taskId") String taskId);
+
+    /**
      * Returns a list of user request forms matching the given query.
      *
      * @param query query conditions
@@ -112,6 +126,17 @@ public interface UserRequestService extends JAXRSService {
     @Path("forms/{taskId}/claim")
     @Produces({ MediaType.APPLICATION_JSON, RESTHeaders.APPLICATION_YAML, MediaType.APPLICATION_XML })
     UserRequestForm claimForm(@NotNull @PathParam("taskId") String taskId);
+
+    /**
+     * Cancels request to manage the form for the given task id.
+     *
+     * @param taskId workflow task id
+     * @return the workflow form for the given task id
+     */
+    @POST
+    @Path("forms/{taskId}/unclaim")
+    @Produces({ MediaType.APPLICATION_JSON, RESTHeaders.APPLICATION_YAML, MediaType.APPLICATION_XML })
+    UserRequestForm unclaimForm(@NotNull @PathParam("taskId") String taskId);
 
     /**
      * Submits a user request form.

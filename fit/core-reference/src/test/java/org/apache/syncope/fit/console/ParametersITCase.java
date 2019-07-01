@@ -21,7 +21,7 @@ package org.apache.syncope.fit.console;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import de.agilecoders.wicket.core.markup.html.bootstrap.dialog.Modal;
-import org.apache.syncope.client.console.commons.Constants;
+import org.apache.syncope.client.ui.commons.Constants;
 import org.apache.syncope.client.console.pages.Parameters;
 import org.apache.wicket.Component;
 import org.apache.wicket.markup.html.WebMarkupContainer;
@@ -34,90 +34,97 @@ public class ParametersITCase extends AbstractConsoleITCase {
     @BeforeEach
     public void login() {
         doLogin(ADMIN_UNAME, ADMIN_PWD);
-        TESTER.clickLink("body:configurationLI:configurationUL:parametersLI:parameters");
-        TESTER.assertRenderedPage(Parameters.class);
+        UTILITY_UI.getTester().clickLink("body:keymasterLI:keymasterUL:parametersLI:parameters");
+        UTILITY_UI.getTester().assertRenderedPage(Parameters.class);
     }
 
     @Test
     public void readParameter() {
-        TESTER.assertComponent("body:content:parametersPanel", WebMarkupContainer.class);
-        assertNotNull(findComponentByProp(SCHEMA, "body:content:parametersPanel", "authentication.statuses"));
+        UTILITY_UI.getTester().assertComponent("body:content:parametersPanel", WebMarkupContainer.class);
+        assertNotNull(UTILITY_UI.findComponentByProp(SCHEMA, "body:content:parametersPanel", "authentication.statuses"));
     }
 
     @Test
     public void createParameter() {
-        TESTER.assertComponent("body:content:parametersPanel", WebMarkupContainer.class);
+        UTILITY_UI.getTester().assertComponent("body:content:parametersPanel", WebMarkupContainer.class);
 
-        TESTER.clickLink("body:content:parametersPanel:container:content:add");
-        TESTER.assertComponent("body:content:parametersPanel:outerObjectsRepeater:0:outer", Modal.class);
+        UTILITY_UI.getTester().clickLink("body:content:parametersPanel:container:content:add");
+        UTILITY_UI.getTester().assertComponent("body:content:parametersPanel:outerObjectsRepeater:0:outer", Modal.class);
 
         FormTester formTester =
-                TESTER.newFormTester("body:content:parametersPanel:outerObjectsRepeater:0:outer:form");
+                UTILITY_UI.getTester().newFormTester("body:content:parametersPanel:outerObjectsRepeater:0:outer:form");
         formTester.submit("content:parametersCreateWizardPanel:form:buttons:next");
 
-        formTester = TESTER.newFormTester("body:content:parametersPanel:outerObjectsRepeater:0:outer:form");
+        formTester = UTILITY_UI.getTester().newFormTester(
+                "body:content:parametersPanel:outerObjectsRepeater:0:outer:form");
         formTester.setValue("content:parametersCreateWizardPanel:form:view:content:schema:textField", "testParam");
         formTester.setValue("content:parametersCreateWizardPanel:form:view:content:attrs:0:panel:textField", "test");
 
         formTester.submit("content:parametersCreateWizardPanel:form:buttons:finish");
 
-        TESTER.assertInfoMessages("Operation executed successfully");
+        UTILITY_UI.getTester().assertInfoMessages("Operation successfully executed");
 
-        TESTER.cleanupFeedbackMessages();
-        TESTER.assertRenderedPage(Parameters.class);
+        UTILITY_UI.getTester().cleanupFeedbackMessages();
+        UTILITY_UI.getTester().assertRenderedPage(Parameters.class);
     }
 
     @Test
     public void updateParameter() {
-        TESTER.assertComponent("body:content:parametersPanel", WebMarkupContainer.class);
+        UTILITY_UI.getTester().assertComponent("body:content:parametersPanel", WebMarkupContainer.class);
 
-        Component result = findComponentByProp(SCHEMA, "body:content:parametersPanel", "notification.maxRetries");
+        Component result = UTILITY_UI.findComponentByProp(SCHEMA, "body:content:parametersPanel",
+                "notification.maxRetries");
         assertNotNull(result);
 
-        TESTER.executeAjaxEvent(result.getPageRelativePath(), Constants.ON_CLICK);
-        TESTER.clickLink("body:content:parametersPanel:outerObjectsRepeater:1:outer:container:content:"
+        UTILITY_UI.getTester().executeAjaxEvent(result.getPageRelativePath(), Constants.ON_CLICK);
+        UTILITY_UI.getTester().clickLink("body:content:parametersPanel:outerObjectsRepeater:1:outer:container:content:"
                 + "togglePanelContainer:container:actions:actions:actionRepeater:0:action:action");
 
-        FormTester formTester = TESTER.newFormTester(
-                "body:content:parametersPanel:container:content:modalDetails:form");
+        FormTester formTester =
+                UTILITY_UI.getTester().newFormTester("body:content:parametersPanel:outerObjectsRepeater:0:outer:form");
+        formTester.submit("content:parametersCreateWizardPanel:form:buttons:next");
 
-        formTester.setValue("content:parametersDetailsPanel:container:parametersForm:panel:spinner", "70");
-        TESTER.clickLink("body:content:parametersPanel:"
-                + "container:content:modalDetails:dialog:footer:inputs:0:submit");
+        formTester = UTILITY_UI.getTester().newFormTester(
+                "body:content:parametersPanel:outerObjectsRepeater:0:outer:form");
+        formTester.setValue("content:parametersCreateWizardPanel:form:view:content:attrs:0:panel:spinner", "70");
 
-        TESTER.assertInfoMessages("Operation executed successfully");
-        TESTER.cleanupFeedbackMessages();
-        TESTER.assertRenderedPage(Parameters.class);
+        formTester.submit("content:parametersCreateWizardPanel:form:buttons:finish");
+
+        UTILITY_UI.getTester().assertInfoMessages("Operation successfully executed");
+
+        UTILITY_UI.getTester().cleanupFeedbackMessages();
+        UTILITY_UI.getTester().assertRenderedPage(Parameters.class);
     }
 
     @Test
     public void deleteParameter() {
-        TESTER.assertComponent("body:content:parametersPanel", WebMarkupContainer.class);
+        UTILITY_UI.getTester().assertComponent("body:content:parametersPanel", WebMarkupContainer.class);
 
-        TESTER.clickLink("body:content:parametersPanel:container:content:add");
-        TESTER.assertComponent("body:content:parametersPanel:outerObjectsRepeater:0:outer", Modal.class);
+        UTILITY_UI.getTester().clickLink("body:content:parametersPanel:container:content:add");
+        UTILITY_UI.getTester().assertComponent("body:content:parametersPanel:outerObjectsRepeater:0:outer", Modal.class);
 
         FormTester formTester =
-                TESTER.newFormTester("body:content:parametersPanel:outerObjectsRepeater:0:outer:form");
+                UTILITY_UI.getTester().newFormTester("body:content:parametersPanel:outerObjectsRepeater:0:outer:form");
         formTester.submit("content:parametersCreateWizardPanel:form:buttons:next");
 
-        formTester = TESTER.newFormTester("body:content:parametersPanel:outerObjectsRepeater:0:outer:form");
+        formTester = UTILITY_UI.getTester().newFormTester(
+                "body:content:parametersPanel:outerObjectsRepeater:0:outer:form");
         formTester.setValue("content:parametersCreateWizardPanel:form:view:content:schema:textField", "deleteParam");
         formTester.setValue("content:parametersCreateWizardPanel:form:view:content:attrs:0:panel:textField", "test");
 
         formTester.submit("content:parametersCreateWizardPanel:form:buttons:finish");
 
-        TESTER.assertInfoMessages("Operation executed successfully");
-        TESTER.cleanupFeedbackMessages();
+        UTILITY_UI.getTester().assertInfoMessages("Operation successfully executed");
+        UTILITY_UI.getTester().cleanupFeedbackMessages();
 
-        Component result = findComponentByProp(SCHEMA, "body:content:parametersPanel", "deleteParam");
+        Component result = UTILITY_UI.findComponentByProp(SCHEMA, "body:content:parametersPanel", "deleteParam");
         assertNotNull(result);
 
-        TESTER.executeAjaxEvent(result.getPageRelativePath(), Constants.ON_CLICK);
-        TESTER.clickLink("body:content:parametersPanel:outerObjectsRepeater:1:outer:container:content:"
+        UTILITY_UI.getTester().executeAjaxEvent(result.getPageRelativePath(), Constants.ON_CLICK);
+        UTILITY_UI.getTester().clickLink("body:content:parametersPanel:outerObjectsRepeater:1:outer:container:content:"
                 + "togglePanelContainer:container:actions:actions:actionRepeater:1:action:action");
 
-        TESTER.assertInfoMessages("Operation executed successfully");
-        TESTER.cleanupFeedbackMessages();
+        UTILITY_UI.getTester().assertInfoMessages("Operation successfully executed");
+        UTILITY_UI.getTester().cleanupFeedbackMessages();
     }
 }

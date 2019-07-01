@@ -37,31 +37,6 @@ under the License.
 
   <profiles>
     <profile>
-      <id>without-eclipse</id>
-
-      <activation>
-	<activeByDefault>false</activeByDefault>
-      </activation>
-
-      <modules>
-	<module>netbeans</module>
-      </modules>
-    </profile>
-
-    <profile>
-      <id>with-eclipse</id>
-
-      <activation>
-	<activeByDefault>true</activeByDefault>
-      </activation>
-
-      <modules>
-	<module>eclipse</module>
-	<module>netbeans</module>
-      </modules>
-    </profile>
-
-    <profile>
       <id>site</id>
 
       <build>
@@ -122,11 +97,10 @@ under the License.
           </plugin>
         </plugins>
       </build>
-
-      <modules>
-	<module>eclipse</module>
-	<module>netbeans</module>
-      </modules>
     </profile>
   </profiles>
+  
+  <modules>
+    <module>netbeans</module>
+  </modules>
 </project>

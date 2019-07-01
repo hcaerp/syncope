@@ -20,7 +20,7 @@ package org.apache.syncope.core.flowable.api;
 
 import java.util.List;
 import org.apache.commons.lang3.tuple.Pair;
-import org.apache.syncope.common.lib.patch.UserPatch;
+import org.apache.syncope.common.lib.request.UserUR;
 import org.apache.syncope.common.lib.to.UserRequest;
 import org.apache.syncope.common.lib.to.UserRequestForm;
 import org.apache.syncope.core.persistence.api.dao.search.OrderByClause;
@@ -85,6 +85,15 @@ public interface UserRequestHandler {
     void cancelByUser(AnyDeletedEvent event);
 
     /**
+     * Get the form matching the provided task id.
+     *
+     * @param userKey user key
+     * @param taskId task id
+     * @return the form for the given task id
+     */
+    UserRequestForm getForm(String userKey, String taskId);
+
+    /**
      * Get the forms matching the provided parameters.
      *
      * @param userKey user key (optional)
@@ -105,10 +114,18 @@ public interface UserRequestHandler {
     UserRequestForm claimForm(String taskId);
 
     /**
+     * Unclaim a form for a given object.
+     *
+     * @param taskId Workflow task to which the form is associated
+     * @return updated form
+     */
+    UserRequestForm unclaimForm(String taskId);
+
+    /**
      * Submit a form.
      *
      * @param form to be submitted
      * @return user updated by this form submit
      */
-    WorkflowResult<UserPatch> submitForm(UserRequestForm form);
+    WorkflowResult<UserUR> submitForm(UserRequestForm form);
 }

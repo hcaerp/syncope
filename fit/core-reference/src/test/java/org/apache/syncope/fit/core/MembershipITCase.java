@@ -24,15 +24,16 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
-import javax.sql.DataSource;
 import javax.ws.rs.core.Response;
 import org.apache.syncope.client.lib.SyncopeClient;
 import org.apache.syncope.common.lib.SyncopeClientException;
-import org.apache.syncope.common.lib.patch.AttrPatch;
-import org.apache.syncope.common.lib.patch.DeassociationPatch;
-import org.apache.syncope.common.lib.patch.MembershipPatch;
-import org.apache.syncope.common.lib.patch.UserPatch;
-import org.apache.syncope.common.lib.to.AttrTO;
+import org.apache.syncope.common.lib.request.AttrPatch;
+import org.apache.syncope.common.lib.request.GroupCR;
+import org.apache.syncope.common.lib.request.ResourceDR;
+import org.apache.syncope.common.lib.request.MembershipUR;
+import org.apache.syncope.common.lib.request.UserCR;
+import org.apache.syncope.common.lib.request.UserUR;
+import org.apache.syncope.common.lib.Attr;
 import org.apache.syncope.common.lib.to.ExecTO;
 import org.apache.syncope.common.lib.to.GroupTO;
 import org.apache.syncope.common.lib.to.ItemTO;
@@ -52,37 +53,32 @@ import org.apache.syncope.common.lib.types.TaskType;
 import org.apache.syncope.common.rest.api.beans.AnyQuery;
 import org.apache.syncope.common.rest.api.service.TaskService;
 import org.apache.syncope.fit.AbstractITCase;
+import org.apache.syncope.fit.ElasticsearchDetector;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.test.context.junit.jupiter.SpringJUnitConfig;
 
-@SpringJUnitConfig(locations = { "classpath:testJDBCEnv.xml" })
 public class MembershipITCase extends AbstractITCase {
-
-    @Autowired
-    private DataSource testDataSource;
 
     @Test
     public void misc() {
-        UserTO user = UserITCase.getUniqueSampleTO("memb@apache.org");
-        user.setRealm("/even/two");
-        user.getPlainAttrs().add(new AttrTO.Builder().schema("aLong").value("1976").build());
-        user.getPlainAttrs().remove(user.getPlainAttr("ctype").get());
+        UserCR userCR = UserITCase.getUniqueSample("memb@apache.org");
+        userCR.setRealm("/even/two");
+        userCR.getPlainAttrs().add(new Attr.Builder("aLong").value("1976").build());
+        userCR.getPlainAttrs().removeIf(attr -> "ctype".equals(attr.getSchema()));
 
         // the group 034740a9-fa10-453b-af37-dc7897e98fb1 has USER type extensions for 'csv' and 'other' 
         // any type classes
-        MembershipTO membership = new MembershipTO.Builder().group("034740a9-fa10-453b-af37-dc7897e98fb1").build();
-        membership.getPlainAttrs().add(new AttrTO.Builder().schema("aLong").value("1977").build());
+        MembershipTO membership = new MembershipTO.Builder("034740a9-fa10-453b-af37-dc7897e98fb1").build();
+        membership.getPlainAttrs().add(new Attr.Builder("aLong").value("1977").build());
 
         // 'fullname' is in 'minimal user', so it is not allowed for this membership
-        membership.getPlainAttrs().add(new AttrTO.Builder().schema("fullname").value("discarded").build());
+        membership.getPlainAttrs().add(new Attr.Builder("fullname").value("discarded").build());
 
-        user.getMemberships().add(membership);
+        userCR.getMemberships().add(membership);
 
         // user creation fails because of fullname
         try {
-            createUser(user);
+            createUser(userCR);
             fail("This should not happen");
         } catch (SyncopeClientException e) {
             assertEquals(ClientExceptionType.InvalidUser, e.getType());
@@ -91,16 +87,17 @@ public class MembershipITCase extends AbstractITCase {
 
         // remove fullname and try again
         membership.getPlainAttrs().remove(membership.getPlainAttr("fullname").get());
+        UserTO userTO = null;
         try {
-            user = createUser(user).getEntity();
+            userTO = createUser(userCR).getEntity();
 
             // 1. verify that 'aLong' is correctly populated for user
-            assertEquals(1, user.getPlainAttr("aLong").get().getValues().size());
-            assertEquals("1976", user.getPlainAttr("aLong").get().getValues().get(0));
+            assertEquals(1, userTO.getPlainAttr("aLong").get().getValues().size());
+            assertEquals("1976", userTO.getPlainAttr("aLong").get().getValues().get(0));
 
             // 2. verify that 'aLong' is correctly populated for user's membership
-            assertEquals(1, user.getMemberships().size());
-            membership = user.getMembership("034740a9-fa10-453b-af37-dc7897e98fb1").get();
+            assertEquals(1, userCR.getMemberships().size());
+            membership = userTO.getMembership("034740a9-fa10-453b-af37-dc7897e98fb1").get();
             assertNotNull(membership);
             assertEquals(1, membership.getPlainAttr("aLong").get().getValues().size());
             assertEquals("1977", membership.getPlainAttr("aLong").get().getValues().get(0));
@@ -110,29 +107,27 @@ public class MembershipITCase extends AbstractITCase {
             assertFalse(membership.getDerAttr("noschema").get().getValues().isEmpty());
 
             // update user - change some values and add new membership attribute
-            UserPatch userPatch = new UserPatch();
-            userPatch.setKey(user.getKey());
+            UserUR userUR = new UserUR();
+            userUR.setKey(userTO.getKey());
 
-            userPatch.getPlainAttrs().add(new AttrPatch.Builder().
-                    attrTO(new AttrTO.Builder().schema("aLong").value("1977").build()).build());
+            userUR.getPlainAttrs().
+                    add(new AttrPatch.Builder(new Attr.Builder("aLong").value("1977").build()).build());
 
-            MembershipPatch membershipPatch = new MembershipPatch.Builder().group(membership.getGroupKey()).build();
-            membershipPatch.getPlainAttrs().add(
-                    new AttrTO.Builder().schema("aLong").value("1976").build());
-            membershipPatch.getPlainAttrs().add(
-                    new AttrTO.Builder().schema("ctype").value("membership type").build());
-            userPatch.getMemberships().add(membershipPatch);
+            MembershipUR membershipPatch = new MembershipUR.Builder(membership.getGroupKey()).build();
+            membershipPatch.getPlainAttrs().add(new Attr.Builder("aLong").value("1976").build());
+            membershipPatch.getPlainAttrs().add(new Attr.Builder("ctype").value("membership type").build());
+            userUR.getMemberships().add(membershipPatch);
 
-            user = updateUser(userPatch).getEntity();
+            userTO = updateUser(userUR).getEntity();
 
             // 4. verify that 'aLong' is correctly populated for user
-            assertEquals(1, user.getPlainAttr("aLong").get().getValues().size());
-            assertEquals("1977", user.getPlainAttr("aLong").get().getValues().get(0));
-            assertFalse(user.getPlainAttr("ctype").isPresent());
+            assertEquals(1, userTO.getPlainAttr("aLong").get().getValues().size());
+            assertEquals("1977", userTO.getPlainAttr("aLong").get().getValues().get(0));
+            assertFalse(userTO.getPlainAttr("ctype").isPresent());
 
             // 5. verify that 'aLong' is correctly populated for user's membership
-            assertEquals(1, user.getMemberships().size());
-            membership = user.getMembership("034740a9-fa10-453b-af37-dc7897e98fb1").get();
+            assertEquals(1, userCR.getMemberships().size());
+            membership = userTO.getMembership("034740a9-fa10-453b-af37-dc7897e98fb1").get();
             assertNotNull(membership);
             assertEquals(1, membership.getPlainAttr("aLong").get().getValues().size());
             assertEquals("1976", membership.getPlainAttr("aLong").get().getValues().get(0));
@@ -141,35 +136,34 @@ public class MembershipITCase extends AbstractITCase {
             assertEquals("membership type", membership.getPlainAttr("ctype").get().getValues().get(0));
 
             // finally remove membership
-            userPatch = new UserPatch();
-            userPatch.setKey(user.getKey());
+            userUR = new UserUR();
+            userUR.setKey(userTO.getKey());
 
-            membershipPatch = new MembershipPatch.Builder().group(membership.getGroupKey()).
+            membershipPatch = new MembershipUR.Builder(membership.getGroupKey()).
                     operation(PatchOperation.DELETE).build();
-            userPatch.getMemberships().add(membershipPatch);
+            userUR.getMemberships().add(membershipPatch);
 
-            user = updateUser(userPatch).getEntity();
+            userTO = updateUser(userUR).getEntity();
 
-            assertTrue(user.getMemberships().isEmpty());
+            assertTrue(userTO.getMemberships().isEmpty());
         } finally {
-            if (user.getKey() != null) {
-                System.out.println("ZZZZZZZZZZZZZZZZZ " + user.getKey());
-//                userService.delete(user.getKey());
+            if (userTO != null) {
+                userService.delete(userTO.getKey());
             }
         }
     }
 
     @Test
     public void deleteUserWithMembership() {
-        UserTO user = UserITCase.getUniqueSampleTO("memb@apache.org");
-        user.setRealm("/even/two");
-        user.getPlainAttrs().add(new AttrTO.Builder().schema("aLong").value("1976").build());
+        UserCR userCR = UserITCase.getUniqueSample("memb@apache.org");
+        userCR.setRealm("/even/two");
+        userCR.getPlainAttrs().add(new Attr.Builder("aLong").value("1976").build());
 
-        MembershipTO membership = new MembershipTO.Builder().group("034740a9-fa10-453b-af37-dc7897e98fb1").build();
-        membership.getPlainAttrs().add(new AttrTO.Builder().schema("aLong").value("1977").build());
-        user.getMemberships().add(membership);
+        MembershipTO membership = new MembershipTO.Builder("034740a9-fa10-453b-af37-dc7897e98fb1").build();
+        membership.getPlainAttrs().add(new Attr.Builder("aLong").value("1977").build());
+        userCR.getMemberships().add(membership);
 
-        user = createUser(user).getEntity();
+        UserTO user = createUser(userCR).getEntity();
         assertNotNull(user.getKey());
 
         userService.delete(user.getKey());
@@ -183,19 +177,19 @@ public class MembershipITCase extends AbstractITCase {
         typeExtension.getAuxClasses().add("csv");
         typeExtension.getAuxClasses().add("other");
 
-        GroupTO groupTO = GroupITCase.getBasicSampleTO("typeExt");
-        groupTO.getTypeExtensions().add(typeExtension);
-        groupTO = createGroup(groupTO).getEntity();
+        GroupCR groupCR = GroupITCase.getBasicSample("typeExt");
+        groupCR.getTypeExtensions().add(typeExtension);
+        GroupTO groupTO = createGroup(groupCR).getEntity();
         assertNotNull(groupTO);
 
         // pre: create user with membership to such group
-        UserTO user = UserITCase.getUniqueSampleTO("typeExt@apache.org");
+        UserCR userCR = UserITCase.getUniqueSample("typeExt@apache.org");
 
-        MembershipTO membership = new MembershipTO.Builder().group(groupTO.getKey()).build();
-        membership.getPlainAttrs().add(new AttrTO.Builder().schema("aLong").value("1454").build());
-        user.getMemberships().add(membership);
+        MembershipTO membership = new MembershipTO.Builder(groupTO.getKey()).build();
+        membership.getPlainAttrs().add(new Attr.Builder("aLong").value("1454").build());
+        userCR.getMemberships().add(membership);
 
-        user = createUser(user).getEntity();
+        UserTO user = createUser(userCR).getEntity();
 
         // verify that 'aLong' is correctly populated for user's membership
         assertEquals(1, user.getMemberships().size());
@@ -239,17 +233,18 @@ public class MembershipITCase extends AbstractITCase {
             assertNotNull(newResource);
 
             // 1. create user with new resource assigned
-            UserTO user = UserITCase.getUniqueSampleTO("memb@apache.org");
-            user.setRealm("/even/two");
-            user.getPlainAttrs().remove(user.getPlainAttr("ctype").get());
-            user.getResources().clear();
-            user.getResources().add(newResource.getKey());
+            UserCR userCR = UserITCase.getUniqueSample("memb@apache.org");
+            userCR.setRealm("/even/two");
+            UserTO user;
+            userCR.getPlainAttrs().removeIf(attr -> "ctype".equals(attr.getSchema()));
+            userCR.getResources().clear();
+            userCR.getResources().add(newResource.getKey());
 
-            MembershipTO membership = new MembershipTO.Builder().group("034740a9-fa10-453b-af37-dc7897e98fb1").build();
-            membership.getPlainAttrs().add(new AttrTO.Builder().schema("aLong").value("5432").build());
-            user.getMemberships().add(membership);
+            MembershipTO membership = new MembershipTO.Builder("034740a9-fa10-453b-af37-dc7897e98fb1").build();
+            membership.getPlainAttrs().add(new Attr.Builder("aLong").value("5432").build());
+            userCR.getMemberships().add(membership);
 
-            user = createUser(user).getEntity();
+            user = createUser(userCR).getEntity();
             assertNotNull(user);
 
             // 2. verify that user was found on resource
@@ -259,11 +254,11 @@ public class MembershipITCase extends AbstractITCase {
             assertEquals("5432", idOnResource);
 
             // 3. unlink user from resource, then remove it
-            DeassociationPatch patch = new DeassociationPatch();
-            patch.setKey(user.getKey());
-            patch.setAction(ResourceDeassociationAction.UNLINK);
-            patch.getResources().add(newResource.getKey());
-            assertNotNull(parseBatchResponse(userService.deassociate(patch)));
+            ResourceDR req = new ResourceDR();
+            req.setKey(user.getKey());
+            req.setAction(ResourceDeassociationAction.UNLINK);
+            req.getResources().add(newResource.getKey());
+            assertNotNull(parseBatchResponse(userService.deassociate(req)));
 
             userService.delete(user.getKey());
 
@@ -281,6 +276,13 @@ public class MembershipITCase extends AbstractITCase {
             assertEquals(ExecStatus.SUCCESS, ExecStatus.valueOf(execution.getStatus()));
 
             // 5. verify that pulled user has
+            if (ElasticsearchDetector.isElasticSearchEnabled(syncopeService)) {
+                try {
+                    Thread.sleep(2000);
+                } catch (InterruptedException ex) {
+                    // ignore
+                }
+            }
             PagedResult<UserTO> users = userService.search(new AnyQuery.Builder().
                     realm("/").
                     fiql(SyncopeClient.getUserSearchConditionBuilder().

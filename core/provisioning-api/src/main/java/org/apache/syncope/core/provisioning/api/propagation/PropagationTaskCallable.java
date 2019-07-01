@@ -19,12 +19,11 @@
 package org.apache.syncope.core.provisioning.api.propagation;
 
 import java.util.concurrent.Callable;
-import org.apache.syncope.common.lib.to.PropagationTaskTO;
 import org.apache.syncope.core.persistence.api.entity.task.TaskExec;
 
 public interface PropagationTaskCallable extends Callable<TaskExec> {
 
-    void setTaskTO(PropagationTaskTO taskTO);
+    void setTaskInfo(PropagationTaskInfo taskInfo);
 
     void setReporter(PropagationReporter reporter);
 }

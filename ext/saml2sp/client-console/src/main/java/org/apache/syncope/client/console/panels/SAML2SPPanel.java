@@ -20,8 +20,8 @@ package org.apache.syncope.client.console.panels;
 
 import javax.ws.rs.client.ClientBuilder;
 import org.apache.syncope.client.console.SyncopeConsoleSession;
-import org.apache.syncope.client.console.commons.Constants;
-import org.apache.syncope.client.console.commons.HttpResourceStream;
+import org.apache.syncope.client.ui.commons.Constants;
+import org.apache.syncope.client.ui.commons.HttpResourceStream;
 import org.apache.wicket.markup.html.link.Link;
 import org.apache.wicket.markup.html.panel.Panel;
 import org.apache.wicket.request.Url;

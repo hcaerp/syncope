@@ -20,6 +20,7 @@ package org.apache.syncope.fit.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -48,6 +49,8 @@ import org.apache.cxf.rs.security.jose.jws.NoneJwsSignatureProvider;
 import org.apache.cxf.rs.security.jose.jwt.JwtClaims;
 import org.apache.cxf.rs.security.jose.jwt.JwtToken;
 import org.apache.syncope.client.lib.SyncopeClient;
+import org.apache.syncope.common.lib.SyncopeConstants;
+import org.apache.syncope.common.lib.request.UserCR;
 import org.apache.syncope.common.lib.to.UserTO;
 import org.apache.syncope.common.rest.api.RESTHeaders;
 import org.apache.syncope.common.rest.api.service.AccessTokenService;
@@ -549,6 +552,42 @@ public class JWTITCase extends AbstractITCase {
             fail("Failure expected on a bad signature");
         } catch (AccessControlException ex) {
             // expected
+        }
+    }
+
+    @Test
+    public void issueSYNCOPE1420() {
+        Long orig = confParamOps.get(SyncopeConstants.MASTER_DOMAIN, "jwt.lifetime.minutes", null, Long.class);
+        try {
+            // set for immediate JWT expiration
+            confParamOps.set(SyncopeConstants.MASTER_DOMAIN, "jwt.lifetime.minutes", 0);
+
+            UserCR userCR = UserITCase.getUniqueSample("syncope164@syncope.apache.org");
+            UserTO user = createUser(userCR).getEntity();
+            assertNotNull(user);
+
+            // login, get JWT with  expiryTime
+            String jwt = clientFactory.create(user.getUsername(), "password123").getJWT();
+
+            JwsJwtCompactConsumer consumer = new JwsJwtCompactConsumer(jwt);
+            assertTrue(consumer.verifySignatureWith(jwsSignatureVerifier));
+            Long expiryTime = consumer.getJwtClaims().getExpiryTime();
+            assertNotNull(expiryTime);
+
+            // wait for 1 sec, check that JWT is effectively expired
+            try {
+                Thread.sleep(1000L);
+            } catch (InterruptedException e) {
+                // ignore
+            }
+            assertTrue(expiryTime < System.currentTimeMillis());
+
+            // login again, get new JWT
+            // (even if ExpiredAccessTokenCleanup did not run yet, as it is scheduled every 5 minutes)
+            String newJWT = clientFactory.create(user.getUsername(), "password123").getJWT();
+            assertNotEquals(jwt, newJWT);
+        } finally {
+            confParamOps.set(SyncopeConstants.MASTER_DOMAIN, "jwt.lifetime.minutes", orig);
         }
     }
 }

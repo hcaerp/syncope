@@ -34,9 +34,9 @@ import java.util.UUID;
 import org.apache.syncope.common.lib.to.UserTO;
 import org.apache.syncope.common.lib.types.AnyTypeKind;
 import org.apache.syncope.common.lib.types.ImplementationEngine;
-import org.apache.syncope.common.lib.types.ImplementationType;
 import org.apache.syncope.common.lib.types.MatchingRule;
 import org.apache.syncope.common.lib.types.ExecStatus;
+import org.apache.syncope.common.lib.types.IdMImplementationType;
 import org.apache.syncope.common.lib.types.ResourceOperation;
 import org.apache.syncope.common.lib.types.PullMode;
 import org.apache.syncope.common.lib.types.TaskType;
@@ -133,7 +133,7 @@ public class TaskTest extends AbstractTest {
         PropagationTask actual = taskDAO.find(task.getKey());
         assertEquals(task, actual);
 
-        taskDAO.flush();
+        entityManager().flush();
 
         resource = resourceDAO.find("ws-target-resource-1");
         assertTrue(taskDAO.findAll(
@@ -155,7 +155,7 @@ public class TaskTest extends AbstractTest {
         task.add(execution);
 
         taskDAO.save(task);
-        taskDAO.flush();
+        entityManager().flush();
 
         task = taskDAO.find("1e697572-b896-484c-ae7f-0c8f63fcbc6c");
         assertNotNull(task);
@@ -178,7 +178,7 @@ public class TaskTest extends AbstractTest {
         task.add(execution);
 
         taskDAO.save(task);
-        taskDAO.flush();
+        entityManager().flush();
 
         task = taskDAO.find("c41b9b71-9bfa-4f90-89f2-84787def4c5c");
         assertNotNull(task);
@@ -201,7 +201,7 @@ public class TaskTest extends AbstractTest {
         task.add(execution);
 
         taskDAO.save(task);
-        taskDAO.flush();
+        entityManager().flush();
 
         task = taskDAO.find("af558be4-9d2f-4359-bf85-a554e6e90be1");
         assertNotNull(task);
@@ -213,7 +213,7 @@ public class TaskTest extends AbstractTest {
     public void deleteTask() {
         taskDAO.delete("1e697572-b896-484c-ae7f-0c8f63fcbc6c");
 
-        taskDAO.flush();
+        entityManager().flush();
 
         assertNull(taskDAO.find("1e697572-b896-484c-ae7f-0c8f63fcbc6c"));
         assertNull(taskExecDAO.find("e58ca1c7-178a-4012-8a71-8aa14eaf0655"));
@@ -226,7 +226,7 @@ public class TaskTest extends AbstractTest {
 
         taskExecDAO.delete("e58ca1c7-178a-4012-8a71-8aa14eaf0655");
 
-        taskExecDAO.flush();
+        entityManager().flush();
 
         assertNull(taskExecDAO.find("e58ca1c7-178a-4012-8a71-8aa14eaf0655"));
 
@@ -276,7 +276,7 @@ public class TaskTest extends AbstractTest {
         Implementation pullActions = entityFactory.newEntity(Implementation.class);
         pullActions.setKey("PullActions" + UUID.randomUUID().toString());
         pullActions.setEngine(ImplementationEngine.JAVA);
-        pullActions.setType(ImplementationType.PULL_ACTIONS);
+        pullActions.setType(IdMImplementationType.PULL_ACTIONS);
         pullActions.setBody(PullActions.class.getName());
         pullActions = implementationDAO.save(pullActions);
 
@@ -298,7 +298,7 @@ public class TaskTest extends AbstractTest {
         Implementation pullActions = entityFactory.newEntity(Implementation.class);
         pullActions.setKey("syncope144");
         pullActions.setEngine(ImplementationEngine.JAVA);
-        pullActions.setType(ImplementationType.PULL_ACTIONS);
+        pullActions.setType(IdMImplementationType.PULL_ACTIONS);
         pullActions.setBody(PullActions.class.getName());
         pullActions = implementationDAO.save(pullActions);
 
