@@ -19,7 +19,6 @@
 package org.apache.syncope.core.flowable.impl;
 
 import org.apache.syncope.core.flowable.api.UserRequestHandler;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -62,6 +61,7 @@ import org.flowable.engine.history.HistoricActivityInstance;
 import org.flowable.engine.impl.persistence.entity.ExecutionEntity;
 import org.flowable.engine.impl.persistence.entity.HistoricFormPropertyEntity;
 import org.flowable.engine.runtime.ProcessInstance;
+import org.flowable.identitylink.api.IdentityLinkType;
 import org.flowable.task.api.Task;
 import org.flowable.task.api.TaskQuery;
 import org.flowable.task.api.history.HistoricTaskInstance;
@@ -127,8 +127,11 @@ public class FlowableUserRequestHandler implements UserRequestHandler {
         userRequest.setStartTime(procInst.getStartTime());
         userRequest.setUsername(userDAO.find(split.getRight()).getUsername());
         userRequest.setExecutionId(procInst.getId());
-        userRequest.setActivityId(FlowableRuntimeUtils.createTaskQuery(engine, false).
-                processInstanceId(procInst.getProcessInstanceId()).singleResult().getTaskDefinitionKey());
+        final Task task = engine.getTaskService().createTaskQuery()
+                .processInstanceId(procInst.getProcessInstanceId()).singleResult();
+        userRequest.setActivityId(task.getTaskDefinitionKey());
+        userRequest.setTaskId(task.getId());
+        userRequest.setHasForm(StringUtils.isNotBlank(task.getFormKey()));
         return userRequest;
     }
 
@@ -300,7 +303,9 @@ public class FlowableUserRequestHandler implements UserRequestHandler {
     }
 
     protected UserRequestForm getForm(final Task task) {
-        return FlowableUserRequestHandler.this.getForm(task, engine.getFormService().getTaskFormData(task.getId()));
+        return task == null
+                ? null
+                : FlowableUserRequestHandler.this.getForm(task, engine.getFormService().getTaskFormData(task.getId()));
     }
 
     protected UserRequestForm getForm(final Task task, final TaskFormData fd) {
@@ -310,7 +315,7 @@ public class FlowableUserRequestHandler implements UserRequestHandler {
         formTO.setDueDate(task.getDueDate());
         formTO.setExecutionId(task.getExecutionId());
         formTO.setFormKey(task.getFormKey());
-        formTO.setOwner(task.getOwner());
+        formTO.setAssignee(task.getAssignee());
 
         return formTO;
     }
@@ -328,7 +333,7 @@ public class FlowableUserRequestHandler implements UserRequestHandler {
         formTO.setDueDate(task.getDueDate());
         formTO.setExecutionId(task.getExecutionId());
         formTO.setFormKey(task.getFormKey());
-        formTO.setOwner(task.getOwner());
+        formTO.setAssignee(task.getAssignee());
 
         HistoricActivityInstance historicActivityInstance = engine.getHistoryService().
                 createHistoricActivityInstanceQuery().
@@ -450,6 +455,20 @@ public class FlowableUserRequestHandler implements UserRequestHandler {
         return formTO;
     }
 
+    @Override
+    public UserRequestForm getForm(final String userKey, final String taskId) {
+        TaskQuery query = engine.getTaskService().createTaskQuery().taskId(taskId);
+        if (userKey != null) {
+            query.processInstanceBusinessKeyLike(FlowableRuntimeUtils.getProcBusinessKey("%", userKey));
+        }
+
+        String authUser = AuthContextUtils.getUsername();
+
+        return adminUser.equals(authUser)
+                ? getForm(getTask(taskId))
+                : getForm(query.taskCandidateOrAssigned(authUser).singleResult());
+    }
+
     @Transactional(readOnly = true)
     @Override
     public Pair<Integer, List<UserRequestForm>> getForms(
@@ -458,29 +477,15 @@ public class FlowableUserRequestHandler implements UserRequestHandler {
             final int size,
             final List<OrderByClause> orderByClauses) {
 
-        Pair<Integer, List<UserRequestForm>> forms;
-
-        TaskQuery query = FlowableRuntimeUtils.createTaskQuery(engine, true);
+        TaskQuery query = engine.getTaskService().createTaskQuery().taskWithFormKey();
         if (userKey != null) {
             query.processInstanceBusinessKeyLike(FlowableRuntimeUtils.getProcBusinessKey("%", userKey));
         }
 
         String authUser = AuthContextUtils.getUsername();
-        if (adminUser.equals(authUser)) {
-            forms = getForms(query, page, size, orderByClauses);
-        } else {
-            User user = userDAO.findByUsername(authUser);
-            forms = getForms(query.taskCandidateOrAssigned(user.getUsername()), page, size, orderByClauses);
-
-            List<String> candidateGroups = new ArrayList<>(userDAO.findAllGroupNames(user));
-            if (!candidateGroups.isEmpty()) {
-                forms = getForms(query.taskCandidateGroupIn(candidateGroups), page, size, orderByClauses);
-            }
-        }
-
-        return forms == null
-                ? Pair.of(0, Collections.<UserRequestForm>emptyList())
-                : forms;
+        return adminUser.equals(authUser)
+                ? getForms(query, page, size, orderByClauses)
+                : getForms(query.taskCandidateOrAssigned(authUser), page, size, orderByClauses);
     }
 
     protected Pair<Integer, List<UserRequestForm>> getForms(
@@ -509,8 +514,8 @@ public class FlowableUserRequestHandler implements UserRequestHandler {
                     query.orderByTaskDueDate();
                     break;
 
-                case "owner":
-                    query.orderByTaskOwner();
+                case "assignee":
+                    query.orderByTaskAssignee();
                     break;
 
                 default:
@@ -536,15 +541,7 @@ public class FlowableUserRequestHandler implements UserRequestHandler {
     }
 
     protected Pair<Task, TaskFormData> parseTask(final String taskId) {
-        Task task;
-        try {
-            task = FlowableRuntimeUtils.createTaskQuery(engine, true).taskId(taskId).singleResult();
-            if (task == null) {
-                throw new FlowableException("NULL result");
-            }
-        } catch (FlowableException e) {
-            throw new NotFoundException("Flowable Task " + taskId, e);
-        }
+        Task task = getTask(taskId);
 
         TaskFormData formData;
         try {
@@ -556,26 +553,66 @@ public class FlowableUserRequestHandler implements UserRequestHandler {
         return Pair.of(task, formData);
     }
 
+    protected Task getTask(final String taskId) throws NotFoundException {
+        Task task;
+        try {
+            task = engine.getTaskService().createTaskQuery().taskWithFormKey().taskId(taskId).singleResult();
+            if (task == null) {
+                throw new FlowableException("NULL result");
+            }
+        } catch (FlowableException e) {
+            throw new NotFoundException("Flowable Task " + taskId, e);
+        }
+        return task;
+    }
+
     @Override
     public UserRequestForm claimForm(final String taskId) {
         Pair<Task, TaskFormData> parsed = parseTask(taskId);
 
         String authUser = AuthContextUtils.getUsername();
         if (!adminUser.equals(authUser)) {
-            List<Task> tasksForUser = FlowableRuntimeUtils.createTaskQuery(engine, true).
-                    taskId(taskId).taskCandidateOrAssigned(authUser).list();
+            List<Task> tasksForUser = engine.getTaskService().createTaskQuery().
+                    taskWithFormKey().taskId(taskId).taskCandidateOrAssigned(authUser).list();
             if (tasksForUser.isEmpty()) {
                 throw new WorkflowException(
                         new IllegalArgumentException(authUser + " is not candidate nor assignee of task " + taskId));
             }
         }
 
+        boolean hasAssignees =
+                engine.getTaskService().getIdentityLinksForTask(taskId).stream().anyMatch(identityLink -> {
+                    return IdentityLinkType.ASSIGNEE.equals(identityLink.getType());
+                });
+        if (hasAssignees) {
+            try {
+                engine.getTaskService().unclaim(taskId);
+            } catch (FlowableException e) {
+                throw new WorkflowException("While unclaiming task " + taskId, e);
+            }
+        }
+
         Task task;
         try {
-            engine.getTaskService().setOwner(taskId, authUser);
-            task = FlowableRuntimeUtils.createTaskQuery(engine, true).taskId(taskId).singleResult();
+            engine.getTaskService().claim(taskId, authUser);
+            task = engine.getTaskService().createTaskQuery().taskWithFormKey().taskId(taskId).singleResult();
         } catch (FlowableException e) {
             throw new WorkflowException("While reading task " + taskId, e);
+        }
+
+        return FlowableUserRequestHandler.this.getForm(task, parsed.getRight());
+    }
+
+    @Override
+    public UserRequestForm unclaimForm(final String taskId) {
+        Pair<Task, TaskFormData> parsed = parseTask(taskId);
+
+        Task task;
+        try {
+            engine.getTaskService().unclaim(taskId);
+            task = engine.getTaskService().createTaskQuery().taskWithFormKey().taskId(taskId).singleResult();
+        } catch (FlowableException e) {
+            throw new WorkflowException("While unclaiming task " + taskId, e);
         }
 
         return FlowableUserRequestHandler.this.getForm(task, parsed.getRight());
@@ -596,9 +633,9 @@ public class FlowableUserRequestHandler implements UserRequestHandler {
         Pair<Task, TaskFormData> parsed = parseTask(form.getTaskId());
 
         String authUser = AuthContextUtils.getUsername();
-        if (!parsed.getLeft().getOwner().equals(authUser)) {
+        if (!parsed.getLeft().getAssignee().equals(authUser)) {
             throw new WorkflowException(new IllegalArgumentException("Task " + form.getTaskId() + " assigned to "
-                    + parsed.getLeft().getOwner() + " but submitted by " + authUser));
+                    + parsed.getLeft().getAssignee() + " but submitted by " + authUser));
         }
 
         String procInstId = parsed.getLeft().getProcessInstanceId();

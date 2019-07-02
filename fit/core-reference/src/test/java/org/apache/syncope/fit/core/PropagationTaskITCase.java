@@ -24,15 +24,24 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Calendar;
 import java.util.Collections;
-import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import javax.ws.rs.core.Response;
-import org.apache.commons.lang3.SerializationUtils;
 import org.apache.syncope.client.lib.batch.BatchRequest;
+import java.util.Set;
+import org.apache.commons.lang3.SerializationUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.syncope.common.lib.SyncopeClientException;
 import org.apache.syncope.common.lib.patch.AttrPatch;
+import org.apache.syncope.common.lib.patch.DeassociationPatch;
+import org.apache.syncope.common.lib.patch.MembershipPatch;
 import org.apache.syncope.common.lib.patch.UserPatch;
 import org.apache.syncope.common.lib.to.TaskTO;
 import org.apache.syncope.common.lib.to.AnyObjectTO;
@@ -41,22 +50,74 @@ import org.apache.syncope.common.lib.to.ConnObjectTO;
 import org.apache.syncope.common.lib.to.PagedResult;
 import org.apache.syncope.common.lib.to.PropagationTaskTO;
 import org.apache.syncope.common.lib.to.ExecTO;
+import org.apache.syncope.common.lib.to.ImplementationTO;
+import org.apache.syncope.common.lib.to.GroupTO;
 import org.apache.syncope.common.lib.to.ItemTO;
+import org.apache.syncope.common.lib.to.MembershipTO;
+import org.apache.syncope.common.lib.to.PlainSchemaTO;
 import org.apache.syncope.common.lib.to.ProvisionTO;
 import org.apache.syncope.common.lib.to.ProvisioningResult;
 import org.apache.syncope.common.lib.to.ResourceTO;
 import org.apache.syncope.common.lib.to.UserTO;
 import org.apache.syncope.common.lib.types.AnyTypeKind;
+import org.apache.syncope.common.lib.types.ImplementationEngine;
+import org.apache.syncope.common.lib.types.ImplementationType;
+import org.apache.syncope.common.lib.types.AttrSchemaType;
 import org.apache.syncope.common.lib.types.MappingPurpose;
 import org.apache.syncope.common.lib.types.PatchOperation;
+import org.apache.syncope.common.lib.types.ResourceDeassociationAction;
+import org.apache.syncope.common.lib.types.SchemaType;
 import org.apache.syncope.common.lib.types.TaskType;
+import org.apache.syncope.common.rest.api.RESTHeaders;
 import org.apache.syncope.common.rest.api.beans.ExecuteQuery;
 import org.apache.syncope.common.rest.api.beans.ExecQuery;
 import org.apache.syncope.common.rest.api.beans.TaskQuery;
 import org.apache.syncope.common.rest.api.service.TaskService;
+import org.apache.syncope.core.provisioning.api.serialization.POJOHelper;
+import org.apache.syncope.fit.core.reference.DateToDateItemTransformer;
+import org.apache.syncope.fit.core.reference.DateToLongItemTransformer;
+import org.identityconnectors.framework.common.objects.Attribute;
+import org.identityconnectors.framework.common.objects.AttributeUtil;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeAll;
 
 public class PropagationTaskITCase extends AbstractTaskITCase {
+
+    @BeforeAll
+    public static void testItemTransformersSetup() {
+        ImplementationTO dateToLong = null;
+        ImplementationTO dateToDate = null;
+        try {
+            dateToLong = implementationService.read(
+                    ImplementationType.ITEM_TRANSFORMER, DateToLongItemTransformer.class.getSimpleName());
+            dateToDate = implementationService.read(
+                    ImplementationType.ITEM_TRANSFORMER, DateToDateItemTransformer.class.getSimpleName());
+        } catch (SyncopeClientException e) {
+            if (e.getType().getResponseStatus() == Response.Status.NOT_FOUND) {
+                dateToLong = new ImplementationTO();
+                dateToLong.setKey(DateToLongItemTransformer.class.getSimpleName());
+                dateToLong.setEngine(ImplementationEngine.JAVA);
+                dateToLong.setType(ImplementationType.ITEM_TRANSFORMER);
+                dateToLong.setBody(DateToLongItemTransformer.class.getName());
+                Response response = implementationService.create(dateToLong);
+                dateToLong = implementationService.read(
+                        dateToLong.getType(), response.getHeaderString(RESTHeaders.RESOURCE_KEY));
+                assertNotNull(dateToLong);
+
+                dateToDate = new ImplementationTO();
+                dateToDate.setKey(DateToDateItemTransformer.class.getSimpleName());
+                dateToDate.setEngine(ImplementationEngine.JAVA);
+                dateToDate.setType(ImplementationType.ITEM_TRANSFORMER);
+                dateToDate.setBody(DateToDateItemTransformer.class.getName());
+                response = implementationService.create(dateToDate);
+                dateToDate = implementationService.read(
+                        dateToDate.getType(), response.getHeaderString(RESTHeaders.RESOURCE_KEY));
+                assertNotNull(dateToDate);
+            }
+        }
+        assertNotNull(dateToLong);
+        assertNotNull(dateToDate);
+    }
 
     @Test
     public void paginatedList() {
@@ -213,13 +274,15 @@ public class PropagationTaskITCase extends AbstractTaskITCase {
 
         // check list
         PagedResult<TaskTO> tasks = taskService.search(
-                new TaskQuery.Builder(TaskType.PROPAGATION).page(1).size(2).details(false).build());
+                new TaskQuery.Builder(TaskType.PROPAGATION).
+                        page(1).size(2).orderBy("operation DESC").details(false).build());
         for (TaskTO item : tasks.getResult()) {
             assertTrue(item.getExecutions().isEmpty());
         }
 
         tasks = taskService.search(
-                new TaskQuery.Builder(TaskType.PROPAGATION).page(1).size(2).details(true).build());
+                new TaskQuery.Builder(TaskType.PROPAGATION).
+                        page(1).size(2).orderBy("operation DESC").details(true).build());
         for (TaskTO item : tasks.getResult()) {
             assertFalse(item.getExecutions().isEmpty());
         }
@@ -272,13 +335,7 @@ public class PropagationTaskITCase extends AbstractTaskITCase {
                         page(1).
                         size(10).
                         build());
-        Collections.sort(unorderedTasks.getResult(), new Comparator<TaskTO>() {
-
-            @Override
-            public int compare(final TaskTO o1, final TaskTO o2) {
-                return o1.getStart().compareTo(o2.getStart());
-            }
-        });
+        Collections.sort(unorderedTasks.getResult(), (t1, t2) -> t1.getStart().compareTo(t2.getStart()));
         assertNotNull(unorderedTasks);
         assertFalse(unorderedTasks.getResult().isEmpty());
         assertEquals(10, unorderedTasks.getResult().size());
@@ -313,4 +370,199 @@ public class PropagationTaskITCase extends AbstractTaskITCase {
         assertTrue(orderedTasks.getResult().equals(unorderedTasks.getResult()));
     }
 
+    @Test
+    public void issueSYNCOPE1430() throws ParseException {
+        ResourceTO ldap = resourceService.read(RESOURCE_NAME_LDAP);
+        try {
+            // 1. clone the LDAP resource and add some sensible mappings
+            ProvisionTO provision = ldap.getProvision(AnyTypeKind.USER.name()).orElse(null);
+            assertNotNull(provision);
+            provision.getMapping().getItems().removeIf(item -> "mail".equals(item.getExtAttrName()));
+            provision.getVirSchemas().clear();
+
+            // Date -> long (JEXL expression) -> string (as all JEXL in Syncope)
+            ItemTO loginDateForJexlAsLong = new ItemTO();
+            loginDateForJexlAsLong.setPurpose(MappingPurpose.PROPAGATION);
+            loginDateForJexlAsLong.setIntAttrName("loginDate");
+            loginDateForJexlAsLong.setExtAttrName("employeeNumber");
+            loginDateForJexlAsLong.setPropagationJEXLTransformer("value.getTime()");
+            provision.getMapping().add(loginDateForJexlAsLong);
+
+            // Date -> string (JEXL expression)
+            ItemTO loginDateForJexlAsString = new ItemTO();
+            loginDateForJexlAsString.setPurpose(MappingPurpose.PROPAGATION);
+            loginDateForJexlAsString.setIntAttrName("loginDate");
+            loginDateForJexlAsString.setExtAttrName("street");
+            loginDateForJexlAsString.setPropagationJEXLTransformer(
+                    "value.toInstant().toString().split(\"T\")[0].replace(\"-\", \"\")");
+            provision.getMapping().add(loginDateForJexlAsString);
+
+            // Date -> long
+            ItemTO loginDateForJavaToLong = new ItemTO();
+            loginDateForJavaToLong.setPurpose(MappingPurpose.PROPAGATION);
+            loginDateForJavaToLong.setIntAttrName("loginDate");
+            loginDateForJavaToLong.setExtAttrName("st");
+            loginDateForJavaToLong.getTransformers().add(DateToLongItemTransformer.class.getSimpleName());
+            provision.getMapping().add(loginDateForJavaToLong);
+
+            // Date -> date
+            ItemTO loginDateForJavaToDate = new ItemTO();
+            loginDateForJavaToDate.setPurpose(MappingPurpose.PROPAGATION);
+            loginDateForJavaToDate.setIntAttrName("loginDate");
+            loginDateForJavaToDate.setExtAttrName("carLicense");
+            loginDateForJavaToDate.getTransformers().add(DateToDateItemTransformer.class.getSimpleName());
+            provision.getMapping().add(loginDateForJavaToDate);
+
+            ldap.getProvisions().clear();
+            ldap.getProvisions().add(provision);
+            ldap.setKey(RESOURCE_NAME_LDAP + "1430" + getUUIDString());
+            resourceService.create(ldap);
+
+            // 2. create user with the new resource assigned
+            UserTO user = UserITCase.getUniqueSampleTO("syncope1430@syncope.apache.org");
+            user.getResources().clear();
+            user.getResources().add(ldap.getKey());
+            user.getPlainAttrs().removeIf(attr -> "loginDate".equals(attr.getSchema()));
+            user.getPlainAttrs().add(attrTO("loginDate", "2019-01-29"));
+            user = createUser(user).getEntity();
+
+            // 3. check attributes prepared for propagation
+            PagedResult<PropagationTaskTO> tasks = taskService.search(new TaskQuery.Builder(TaskType.PROPAGATION).
+                    resource(user.getResources().iterator().next()).
+                    anyTypeKind(AnyTypeKind.USER).entityKey(user.getKey()).build());
+            assertEquals(1, tasks.getSize());
+
+            Set<Attribute> propagationAttrs = new HashSet<>();
+            if (StringUtils.isNotBlank(tasks.getResult().get(0).getAttributes())) {
+                propagationAttrs.addAll(Arrays.asList(
+                        POJOHelper.deserialize(tasks.getResult().get(0).getAttributes(), Attribute[].class)));
+            }
+
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
+
+            Calendar loginDate = Calendar.getInstance();
+            loginDate.setTime(sdf.parse(user.getPlainAttr("loginDate").get().getValues().get(0)));
+
+            Attribute employeeNumber = AttributeUtil.find("employeeNumber", propagationAttrs);
+            assertNotNull(employeeNumber);
+            assertEquals(String.valueOf(loginDate.getTimeInMillis()), employeeNumber.getValue().get(0));
+
+            Attribute street = AttributeUtil.find("street", propagationAttrs);
+            assertNotNull(street);
+            assertEquals(loginDate.toInstant().toString().split("T")[0].replace("-", ""), street.getValue().get(0));
+
+            Attribute st = AttributeUtil.find("st", propagationAttrs);
+            assertNotNull(st);
+            assertEquals(loginDate.getTimeInMillis(), st.getValue().get(0));
+
+            loginDate.add(Calendar.DAY_OF_MONTH, 1);
+
+            Attribute carLicense = AttributeUtil.find("carLicense", propagationAttrs);
+            assertNotNull(carLicense);
+            assertEquals(sdf.format(loginDate.getTime()), carLicense.getValue().get(0));
+        } finally {
+            try {
+                resourceService.delete(ldap.getKey());
+            } catch (Exception ignore) {
+                // ignore
+            }
+        }
+    }
+
+    @Test
+    public void issueSYNCOPE1473() throws ParseException {
+        // create a new group schema
+        PlainSchemaTO schemaTO = new PlainSchemaTO();
+        schemaTO.setKey("ldapGroups" + getUUIDString());
+        schemaTO.setType(AttrSchemaType.String);
+        schemaTO.setMultivalue(true);
+        schemaTO.setReadonly(true);
+        schemaTO.setAnyTypeClass("minimal user");
+
+        schemaTO = createSchema(SchemaType.PLAIN, schemaTO);
+        assertNotNull(schemaTO);
+
+        ResourceTO ldap = resourceService.read(RESOURCE_NAME_LDAP);
+        try {
+            // 1. clone the LDAP resource and add some sensible mappings
+            ProvisionTO provisionGroup = 
+                    SerializationUtils.clone(ldap.getProvision(AnyTypeKind.GROUP.name()).orElse(null));
+            assertNotNull(provisionGroup);
+            provisionGroup.getVirSchemas().clear();
+            
+            ProvisionTO provisionUser = 
+                    SerializationUtils.clone(ldap.getProvision(AnyTypeKind.USER.name()).orElse(null));
+            assertNotNull(provisionUser);
+            provisionUser.getMapping().getItems().removeIf(item -> "mail".equals(item.getExtAttrName()));
+            provisionUser.getVirSchemas().clear();
+
+            ItemTO ldapGroups = new ItemTO();
+            ldapGroups.setPurpose(MappingPurpose.PROPAGATION);
+            ldapGroups.setIntAttrName(schemaTO.getKey());
+            ldapGroups.setExtAttrName("ldapGroups");
+            provisionUser.getMapping().add(ldapGroups);
+
+            ldap.getProvisions().clear();
+            ldap.getProvisions().add(provisionUser);
+            ldap.getProvisions().add(provisionGroup);
+            ldap.setKey(RESOURCE_NAME_LDAP + "1473" + getUUIDString());
+            resourceService.create(ldap);
+
+            // 1. create group with the new resource assigned
+            GroupTO groupTO = new GroupTO();
+            groupTO.setName("SYNCOPEGROUP1473-" + getUUIDString());
+            groupTO.setRealm("/");
+            groupTO.getResources().add(ldap.getKey());
+
+            groupTO = createGroup(groupTO).getEntity();
+            assertNotNull(groupTO);
+
+            // 2. create user with the new resource assigned
+            UserTO userTO = UserITCase.getUniqueSampleTO("syncope1473@syncope.apache.org");
+            userTO.getResources().clear();
+            userTO.getResources().add(ldap.getKey());
+            userTO.getMemberships().add(new MembershipTO.Builder().group(groupTO.getKey()).build());
+
+            userTO = createUser(userTO).getEntity();
+            assertNotNull(userTO);
+
+            // 3. check attributes prepared for propagation
+            PagedResult<PropagationTaskTO> tasks = taskService.search(new TaskQuery.Builder(TaskType.PROPAGATION).
+                    resource(userTO.getResources().iterator().next()).
+                    anyTypeKind(AnyTypeKind.USER).entityKey(userTO.getKey()).build());
+            assertEquals(1, tasks.getSize());
+
+            groupService.deassociate(new DeassociationPatch.Builder().key(groupTO.getKey()).
+                    action(ResourceDeassociationAction.UNLINK).resource(ldap.getKey()).build());
+            groupService.delete(groupTO.getKey());
+
+            GroupTO newGroupTO = new GroupTO();
+            newGroupTO.setName("NEWSYNCOPEGROUP1473-" + getUUIDString());
+            newGroupTO.setRealm("/");
+            newGroupTO.getResources().add(ldap.getKey());
+
+            newGroupTO = createGroup(newGroupTO).getEntity();
+            assertNotNull(newGroupTO);
+
+            UserPatch userPatch = new UserPatch();
+            userPatch.setKey(userTO.getKey());
+            userPatch.getMemberships().add(
+                    new MembershipPatch.Builder().group(
+                            newGroupTO.getKey()).operation(PatchOperation.ADD_REPLACE).build());
+            userService.update(userPatch);
+
+            ConnObjectTO connObject =
+                    resourceService.readConnObject(ldap.getKey(), AnyTypeKind.USER.name(), userTO.getKey());
+            assertNotNull(connObject);
+            assertNotNull(connObject.getAttr("ldapGroups"));
+            assertTrue(connObject.getAttr("ldapGroups").get().getValues().size() == 2);
+
+        } finally {
+            try {
+                resourceService.delete(ldap.getKey());
+            } catch (Exception ignore) {
+                // ignore
+            }
+        }
+    }
 }

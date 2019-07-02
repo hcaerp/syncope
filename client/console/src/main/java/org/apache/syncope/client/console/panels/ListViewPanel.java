@@ -152,11 +152,7 @@ public abstract class ListViewPanel<T extends Serializable> extends WizardMgtPan
             listOfItems = new ArrayList<>();
         } else {
             listOfItems = list;
-            if (LOG.isDebugEnabled()) {
-                toBeIncluded.forEach(field -> {
-                    LOG.debug("Show field {}", field);
-                });
-            }
+            LOG.debug("Show fields {}", toBeIncluded);
         }
 
         addInnerObject(header(toBeIncluded));
@@ -246,7 +242,7 @@ public abstract class ListViewPanel<T extends Serializable> extends WizardMgtPan
         }
     }
 
-    protected abstract Component getValueComponent(final String key, final T bean);
+    protected abstract Component getValueComponent(String key, T bean);
 
     /**
      * ListViewPanel builder.
@@ -487,7 +483,7 @@ public abstract class ListViewPanel<T extends Serializable> extends WizardMgtPan
         }
     }
 
-    protected abstract T getActualItem(final T item, final List<T> list);
+    protected abstract T getActualItem(T item, List<T> list);
 
     public static class ListViewReload<T extends Serializable> implements Serializable {
 

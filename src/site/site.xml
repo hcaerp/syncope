@@ -46,7 +46,6 @@ under the License.
         <showFollowers>false</showFollowers>
       </twitter>
       <facebookLike/>
-      <googlePlusOne/>
     </fluidoSkin>
   </custom>
   
@@ -88,11 +87,11 @@ under the License.
 
     <footer>
       <![CDATA[
-Copyright &copy; 2018, the Apache Software Foundation.<br/>
+Copyright &copy; 2019, the Apache Software Foundation.<br/>
 Apache, Syncope, Apache Syncope, the Apache feather logo and the Apache Syncope project logo are trademarks of The Apache Software Foundation. All other marks mentioned may be trademarks or registered trademarks of their respective owners.
     
     <div class="pull-right">
-      <script type="text/javascript" src="https://www.ohloh.net/p/syncope/widgets/project_thin_badge.js"></script>
+      <a href="https://www.openhub.net/p/syncope"><img src="https://www.openhub.net/p/syncope/widgets/project_thin_badge.gif"/></a>
       <a href="https://bestpractices.coreinfrastructure.org/projects/154">
         <img src="https://bestpractices.coreinfrastructure.org/projects/154/badge" style="vertical-align: top"/>
       </a>

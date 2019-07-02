@@ -41,6 +41,7 @@ import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
 import javax.persistence.OneToOne;
 import javax.persistence.Table;
+import javax.persistence.UniqueConstraint;
 import javax.validation.constraints.NotNull;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.syncope.common.lib.types.ConnConfProperty;
@@ -113,36 +114,28 @@ public class JPAExternalResource extends AbstractProvidedKeyEntity implements Ex
     @NotNull
     private TraceLevel createTraceLevel = TraceLevel.FAILURES;
 
-    ;
-
     @Enumerated(EnumType.STRING)
     @NotNull
     private TraceLevel updateTraceLevel = TraceLevel.FAILURES;
-
-    ;
 
     @Enumerated(EnumType.STRING)
     @NotNull
     private TraceLevel deleteTraceLevel = TraceLevel.FAILURES;
 
-    ;
-
     @Enumerated(EnumType.STRING)
     @NotNull
     private TraceLevel provisioningTraceLevel = TraceLevel.FAILURES;
 
-    ;
-
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY)
     private JPAPasswordPolicy passwordPolicy;
 
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY)
     private JPAAccountPolicy accountPolicy;
 
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY)
     private JPAPullPolicy pullPolicy;
 
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY)
     private JPAPushPolicy pushPolicy;
 
     /**
@@ -167,7 +160,9 @@ public class JPAExternalResource extends AbstractProvidedKeyEntity implements Ex
             joinColumns =
             @JoinColumn(name = "resource_id"),
             inverseJoinColumns =
-            @JoinColumn(name = "implementation_id"))
+            @JoinColumn(name = "implementation_id"),
+            uniqueConstraints =
+            @UniqueConstraint(columnNames = { "resource_id", "implementation_id" }))
     private List<JPAImplementation> propagationActions = new ArrayList<>();
 
     @Override

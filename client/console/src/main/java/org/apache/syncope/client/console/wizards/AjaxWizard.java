@@ -164,7 +164,7 @@ public abstract class AjaxWizard<T extends Serializable> extends Wizard
      * @param target request target
      * @return a pair of payload (maybe null) and resulting object.
      */
-    protected abstract Pair<Serializable, Serializable> onApplyInternal(final AjaxRequestTarget target);
+    protected abstract Pair<Serializable, Serializable> onApplyInternal(AjaxRequestTarget target);
 
     /**
      * @see org.apache.wicket.extensions.wizard.Wizard#onCancel()
@@ -201,7 +201,7 @@ public abstract class AjaxWizard<T extends Serializable> extends Wizard
                 send(eventSink, Broadcast.EXACT, new NewItemFinishEvent<>(item, target).setResult(res));
             }
         } catch (TimeoutException te) {
-            LOG.warn("Operation applying took to long", te);
+            LOG.warn("Operation took too long", te);
             if (eventSink == null) {
                 send(this, Broadcast.BUBBLE, new NewItemCancelEvent<>(item, target));
             } else {
@@ -364,7 +364,7 @@ public abstract class AjaxWizard<T extends Serializable> extends Wizard
         try {
             onApply(target);
         } catch (TimeoutException te) {
-            LOG.warn("Operation applying took to long", te);
+            LOG.warn("Operation took too long", te);
             send(eventSink, Broadcast.EXACT, new NewItemCancelEvent<>(item, target));
             SyncopeConsoleSession.get().warn(getString("timeout"));
             ((BasePage) pageRef.getPage()).getNotificationPanel().refresh(target);

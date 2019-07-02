@@ -18,7 +18,6 @@
  */
 package org.apache.syncope.core.rest.cxf.service;
 
-import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -35,6 +34,7 @@ import org.apache.cxf.jaxrs.ext.MessageContext;
 import org.apache.cxf.jaxrs.ext.search.SearchBean;
 import org.apache.cxf.jaxrs.ext.search.SearchCondition;
 import org.apache.cxf.jaxrs.ext.search.SearchContext;
+import org.apache.syncope.common.lib.BaseBean;
 import org.apache.syncope.common.lib.SyncopeClientException;
 import org.apache.syncope.common.lib.SyncopeConstants;
 import org.apache.syncope.common.lib.to.PagedResult;
@@ -44,7 +44,6 @@ import org.apache.syncope.common.rest.api.service.JAXRSService;
 import org.apache.syncope.common.rest.api.Preference;
 import org.apache.syncope.common.rest.api.RESTHeaders;
 import org.apache.syncope.core.persistence.api.dao.AnyDAO;
-import org.apache.syncope.core.persistence.api.dao.NotFoundException;
 import org.apache.syncope.core.persistence.api.search.SearchCondVisitor;
 import org.apache.syncope.core.persistence.api.dao.search.OrderByClause;
 import org.apache.syncope.core.persistence.api.dao.search.SearchCond;
@@ -70,9 +69,6 @@ abstract class AbstractServiceImpl implements JAXRSService {
         String actualKey = pretendingKey;
         if (!SyncopeConstants.UUID_PATTERN.matcher(pretendingKey).matches()) {
             actualKey = dao.findKey(pretendingKey);
-            if (actualKey == null) {
-                throw new NotFoundException("User, Group or Any Object for " + pretendingKey);
-            }
         }
 
         return actualKey;
@@ -190,7 +186,7 @@ abstract class AbstractServiceImpl implements JAXRSService {
         List<OrderByClause> result = new ArrayList<>();
 
         for (String clause : orderBy.split(",")) {
-            String[] elems = clause.split(" ");
+            String[] elems = clause.trim().split(" ");
 
             if (elems.length > 0 && StringUtils.isNotBlank(elems[0])) {
                 OrderByClause obc = new OrderByClause();
@@ -216,7 +212,7 @@ abstract class AbstractServiceImpl implements JAXRSService {
      * @param totalCount total result size (not considering pagination)
      * @return paged result
      */
-    protected <T extends Serializable> PagedResult<T> buildPagedResult(
+    protected <T extends BaseBean> PagedResult<T> buildPagedResult(
             final List<T> list, final int page, final int size, final int totalCount) {
 
         PagedResult<T> result = new PagedResult<>();

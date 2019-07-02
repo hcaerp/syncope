@@ -24,7 +24,6 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
-import javax.sql.DataSource;
 import org.apache.syncope.common.lib.policy.AccountRuleConf;
 import org.apache.syncope.common.lib.policy.DefaultAccountRuleConf;
 import org.apache.syncope.common.lib.policy.DefaultPasswordRuleConf;
@@ -40,11 +39,9 @@ import org.apache.syncope.common.lib.report.ReconciliationReportletConf;
 import org.apache.syncope.common.lib.report.ReportletConf;
 import org.apache.syncope.common.lib.report.StaticReportletConf;
 import org.apache.syncope.common.lib.report.UserReportletConf;
-import org.apache.syncope.common.lib.to.SchedTaskTO;
-import org.apache.syncope.common.lib.types.ImplementationEngine;
 import org.apache.syncope.common.lib.types.ImplementationType;
-import org.apache.syncope.common.lib.types.TaskType;
-import org.apache.syncope.core.logic.TaskLogic;
+import org.apache.syncope.core.logic.init.ElasticsearchInit;
+import org.apache.syncope.core.logic.init.EnableFlowableForTestUsers;
 import org.apache.syncope.core.provisioning.java.job.report.AuditReportlet;
 import org.apache.syncope.core.provisioning.java.job.report.GroupReportlet;
 import org.apache.syncope.core.provisioning.java.job.report.ReconciliationReportlet;
@@ -54,22 +51,16 @@ import org.apache.syncope.core.persistence.api.DomainsHolder;
 import org.apache.syncope.core.persistence.api.ImplementationLookup;
 import org.apache.syncope.core.persistence.api.dao.AccountRule;
 import org.apache.syncope.core.persistence.api.dao.AnySearchDAO;
-import org.apache.syncope.core.persistence.api.dao.ImplementationDAO;
 import org.apache.syncope.core.persistence.api.dao.PasswordRule;
 import org.apache.syncope.core.persistence.api.dao.PullCorrelationRule;
 import org.apache.syncope.core.persistence.api.dao.PushCorrelationRule;
 import org.apache.syncope.core.persistence.api.dao.Reportlet;
-import org.apache.syncope.core.persistence.api.entity.EntityFactory;
-import org.apache.syncope.core.persistence.api.entity.Implementation;
 import org.apache.syncope.core.persistence.jpa.attrvalue.validation.AlwaysTrueValidator;
 import org.apache.syncope.core.persistence.jpa.attrvalue.validation.BasicValidator;
 import org.apache.syncope.core.persistence.jpa.attrvalue.validation.BinaryValidator;
 import org.apache.syncope.core.persistence.jpa.attrvalue.validation.EmailAddressValidator;
-import org.apache.syncope.core.persistence.jpa.dao.DefaultAccountRule;
-import org.apache.syncope.core.persistence.jpa.dao.DefaultPasswordRule;
 import org.apache.syncope.core.persistence.jpa.dao.DefaultPullCorrelationRule;
 import org.apache.syncope.core.persistence.jpa.dao.DefaultPushCorrelationRule;
-import org.apache.syncope.core.persistence.jpa.dao.HaveIBeenPwnedPasswordRule;
 import org.apache.syncope.core.provisioning.java.propagation.AzurePropagationActions;
 import org.apache.syncope.core.provisioning.java.propagation.DBPasswordPropagationActions;
 import org.apache.syncope.core.provisioning.java.propagation.GoogleAppsPropagationActions;
@@ -78,8 +69,12 @@ import org.apache.syncope.core.provisioning.java.propagation.LDAPPasswordPropaga
 import org.apache.syncope.core.provisioning.java.pushpull.DBPasswordPullActions;
 import org.apache.syncope.core.provisioning.java.pushpull.LDAPMembershipPullActions;
 import org.apache.syncope.core.provisioning.java.pushpull.LDAPPasswordPullActions;
+import org.apache.syncope.core.spring.policy.DefaultAccountRule;
+import org.apache.syncope.core.spring.policy.DefaultPasswordRule;
+import org.apache.syncope.core.spring.policy.HaveIBeenPwnedPasswordRule;
 import org.apache.syncope.core.spring.security.AuthContextUtils;
 import org.apache.syncope.core.spring.security.SyncopeJWTSSOProvider;
+import org.apache.syncope.core.workflow.api.UserWorkflowAdapter;
 import org.springframework.aop.support.AopUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -87,8 +82,6 @@ import org.springframework.beans.factory.annotation.Autowired;
  * Static implementation providing information about the integration test environment.
  */
 public class ITImplementationLookup implements ImplementationLookup {
-
-    private static final String ES_REINDEX = "org.apache.syncope.core.provisioning.java.job.ElasticsearchReindex";
 
     private static final Set<Class<?>> JWTSSOPROVIDER_CLASSES = new HashSet<>(
             Arrays.asList(SyncopeJWTSSOProvider.class, CustomJWTSSOProvider.class));
@@ -184,6 +177,8 @@ public class ITImplementationLookup implements ImplementationLookup {
             put(ImplementationType.PASSWORD_RULE, classNames);
 
             classNames = new HashSet<>();
+            classNames.add(DateToDateItemTransformer.class.getName());
+            classNames.add(DateToLongItemTransformer.class.getName());
             put(ImplementationType.ITEM_TRANSFORMER, classNames);
 
             classNames = new HashSet<>();
@@ -240,19 +235,19 @@ public class ITImplementationLookup implements ImplementationLookup {
     };
 
     @Autowired
+    private UserWorkflowAdapter uwf;
+
+    @Autowired
     private AnySearchDAO anySearchDAO;
-
-    @Autowired
-    private ImplementationDAO implementationDAO;
-
-    @Autowired
-    private EntityFactory entityFactory;
 
     @Autowired
     private DomainsHolder domainsHolder;
 
     @Autowired
-    private TaskLogic taskLogic;
+    private EnableFlowableForTestUsers enableFlowableForTestUsers;
+
+    @Autowired
+    private ElasticsearchInit elasticsearchInit;
 
     @Override
     public Integer getPriority() {
@@ -261,33 +256,24 @@ public class ITImplementationLookup implements ImplementationLookup {
 
     @Override
     public void load() {
-        // in case the Elasticsearch extension is enabled, reinit a clean index for all available domains
-        if (AopUtils.getTargetClass(anySearchDAO).getName().contains("Elasticsearch")) {
-            for (Map.Entry<String, DataSource> entry : domainsHolder.getDomains().entrySet()) {
-                AuthContextUtils.execWithAuthContext(entry.getKey(), () -> {
-                    Implementation reindex = implementationDAO.find(ImplementationType.TASKJOB_DELEGATE).
-                            stream().
-                            filter(impl -> impl.getEngine() == ImplementationEngine.JAVA
-                            && ES_REINDEX.equals(impl.getBody())).
-                            findAny().orElse(null);
-                    if (reindex == null) {
-                        reindex = entityFactory.newEntity(Implementation.class);
-                        reindex.setEngine(ImplementationEngine.JAVA);
-                        reindex.setType(ImplementationType.TASKJOB_DELEGATE);
-                        reindex.setBody(ES_REINDEX);
-                        reindex = implementationDAO.save(reindex);
-                    }
-
-                    SchedTaskTO task = new SchedTaskTO();
-                    task.setJobDelegate(reindex.getKey());
-                    task.setName("Elasticsearch Reindex");
-                    task = taskLogic.createSchedTask(TaskType.SCHEDULED, task);
-
-                    taskLogic.execute(task.getKey(), null, false);
-
+        // in case the Flowable extension is enabled, enable modifications for test users
+        if (AopUtils.getTargetClass(uwf).getName().contains("Flowable")) {
+            domainsHolder.getDomains().forEach((domain, datasource) -> {
+                AuthContextUtils.execWithAuthContext(domain, () -> {
+                    enableFlowableForTestUsers.init(datasource);
                     return null;
                 });
-            }
+            });
+        }
+
+        // in case the Elasticsearch extension is enabled, reinit a clean index for all available domains
+        if (AopUtils.getTargetClass(anySearchDAO).getName().contains("Elasticsearch")) {
+            domainsHolder.getDomains().forEach((domain, datasource) -> {
+                AuthContextUtils.execWithAuthContext(domain, () -> {
+                    elasticsearchInit.init();
+                    return null;
+                });
+            });
         }
     }
 

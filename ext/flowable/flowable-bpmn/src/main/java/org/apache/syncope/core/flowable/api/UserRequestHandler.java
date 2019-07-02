@@ -85,6 +85,15 @@ public interface UserRequestHandler {
     void cancelByUser(AnyDeletedEvent event);
 
     /**
+     * Get the form matching the provided task id.
+     *
+     * @param userKey user key
+     * @param taskId task id
+     * @return the form for the given task id
+     */
+    UserRequestForm getForm(String userKey, String taskId);
+    
+    /**
      * Get the forms matching the provided parameters.
      *
      * @param userKey user key (optional)
@@ -103,6 +112,14 @@ public interface UserRequestHandler {
      * @return updated form
      */
     UserRequestForm claimForm(String taskId);
+    
+    /**
+     * Unclaim a form for a given object.
+     *
+     * @param taskId Workflow task to which the form is associated
+     * @return updated form
+     */
+    UserRequestForm unclaimForm(String taskId);
 
     /**
      * Submit a form.

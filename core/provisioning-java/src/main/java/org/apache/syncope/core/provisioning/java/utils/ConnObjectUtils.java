@@ -37,9 +37,6 @@ import org.apache.syncope.core.persistence.api.dao.ExternalResourceDAO;
 import org.apache.syncope.core.persistence.api.dao.UserDAO;
 import org.apache.syncope.core.persistence.api.entity.AnyUtils;
 import org.apache.syncope.core.persistence.api.entity.user.User;
-import org.apache.syncope.core.spring.security.Encryptor;
-import org.apache.syncope.core.spring.security.PasswordGenerator;
-import org.apache.syncope.core.spring.security.SecureRandomUtils;
 import org.apache.syncope.core.persistence.api.dao.RealmDAO;
 import org.apache.syncope.core.persistence.api.entity.Realm;
 import org.apache.syncope.core.persistence.api.entity.policy.PasswordPolicy;
@@ -47,7 +44,10 @@ import org.apache.syncope.core.persistence.api.entity.resource.OrgUnit;
 import org.apache.syncope.core.persistence.api.entity.resource.Provision;
 import org.apache.syncope.core.persistence.api.entity.task.PullTask;
 import org.apache.syncope.core.provisioning.api.MappingManager;
-import org.apache.syncope.core.provisioning.api.utils.policy.InvalidPasswordRuleConf;
+import org.apache.syncope.core.spring.policy.InvalidPasswordRuleConf;
+import org.apache.syncope.core.spring.security.Encryptor;
+import org.apache.syncope.core.spring.security.PasswordGenerator;
+import org.apache.syncope.core.spring.security.SecureRandomUtils;
 import org.identityconnectors.common.security.GuardedByteArray;
 import org.identityconnectors.common.security.GuardedString;
 import org.identityconnectors.common.security.SecurityUtil;
@@ -260,8 +260,11 @@ public class ConnObjectUtils {
                         updatedUser.setPassword(null);
                     }
 
-                    updatedUser.setSecurityQuestion(updatedUser.getSecurityQuestion());
-                    updatedUser.setMustChangePassword(originalUser.isMustChangePassword());
+                    updatedUser.setSecurityQuestion(originalUser.getSecurityQuestion());
+
+                    if (!mappingManager.hasMustChangePassword(provision)) {
+                        updatedUser.setMustChangePassword(originalUser.isMustChangePassword());
+                    }
 
                     anyPatch = (T) AnyOperations.diff(updatedUser, originalUser, true);
                     break;

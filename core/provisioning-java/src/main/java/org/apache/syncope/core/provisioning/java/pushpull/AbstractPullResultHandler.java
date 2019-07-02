@@ -782,7 +782,7 @@ public abstract class AbstractPullResultHandler extends AbstractSyncopeResultHan
                 processed.getDeltaType(), processed.getUid().getUidValue(), processed.getObject().getObjectClass());
 
         try {
-            List<String> keys = pullUtils.match(processed.getObject(), provision, anyUtils);
+            List<String> keys = pullUtils.match(processed, provision, anyUtils);
             LOG.debug("Match(es) found for {} as {}: {}",
                     processed.getUid().getUidValue(), processed.getObject().getObjectClass(), keys);
 
@@ -901,7 +901,9 @@ public abstract class AbstractPullResultHandler extends AbstractSyncopeResultHan
 
         AnyUtils anyUtils = getAnyUtils();
 
-        notificationManager.createTasks(AuditElements.EventCategoryType.PULL,
+        notificationManager.createTasks(
+                AuthContextUtils.getUsername(),
+                AuditElements.EventCategoryType.PULL,
                 anyUtils.anyTypeKind().name().toLowerCase(),
                 profile.getTask().getResource().getKey(),
                 event,

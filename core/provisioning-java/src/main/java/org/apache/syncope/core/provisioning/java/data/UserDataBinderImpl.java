@@ -155,6 +155,7 @@ public class UserDataBinderImpl extends AbstractAnyDataBinder implements UserDat
             LOG.debug("Password was not provided or not required to be stored");
         } else {
             setPassword(user, userTO.getPassword(), scce);
+            user.setChangePwdDate(new Date());
         }
 
         user.setMustChangePassword(userTO.isMustChangePassword());
@@ -328,6 +329,15 @@ public class UserDataBinderImpl extends AbstractAnyDataBinder implements UserDat
 
         if (userPatch.getMustChangePassword() != null) {
             user.setMustChangePassword(userPatch.getMustChangePassword().getValue());
+
+            propByRes.addAll(
+                    ResourceOperation.UPDATE,
+                    anyUtils.getAllResources(toBeUpdated).stream().
+                            filter(resource -> resource.getProvision(toBeUpdated.getType()).isPresent()).
+                            filter(resource -> mappingManager.hasMustChangePassword(
+                            resource.getProvision(toBeUpdated.getType()).get())).
+                            map(Entity::getKey).
+                            collect(Collectors.toSet()));
         }
 
         // roles
@@ -418,6 +428,8 @@ public class UserDataBinderImpl extends AbstractAnyDataBinder implements UserDat
                     user.remove(attr);
                     attr.setOwner(null);
                     attr.setMembership(null);
+                    plainAttrValueDAO.deleteAll(attr, anyUtils);
+                    plainAttrDAO.delete(attr);
                 });
 
                 if (membPatch.getOperation() == PatchOperation.DELETE) {

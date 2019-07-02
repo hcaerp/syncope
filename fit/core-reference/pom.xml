@@ -24,7 +24,7 @@ under the License.
   <parent>
     <groupId>org.apache.syncope</groupId>
     <artifactId>syncope-fit</artifactId>
-    <version>2.1.3-SNAPSHOT</version>
+    <version>2.1.5-SNAPSHOT</version>
   </parent>
 
   <name>Apache Syncope FIT Core Reference</name>
@@ -210,7 +210,7 @@ under the License.
     </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
-      <artifactId>junit-jupiter-engine</artifactId>
+      <artifactId>junit-jupiter</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>
@@ -465,7 +465,7 @@ under the License.
     </profile>
   
     <profile>
-      <id>elasticsearch</id>
+      <id>elasticsearch-it</id>
       
       <dependencies>
         <dependency>
@@ -601,7 +601,7 @@ under the License.
       <dependencies>
         <dependency>
           <groupId>org.apache.syncope.core</groupId>
-          <artifactId>syncope-core-persistence-jpa-pgjsonb</artifactId>
+          <artifactId>syncope-core-persistence-jpa-json</artifactId>
           <version>${project.version}</version>
         </dependency>
     
@@ -636,7 +636,7 @@ under the License.
                 <configuration>
                   <target>
                     <delete>
-                      <fileset dir="${project.build.directory}/classes/domains" includes="Two*"/>
+                      <fileset dir="${project.build.directory}/classes/domains" includes="Two*" />
                     </delete>
                   </target>
                 </configuration>
@@ -724,15 +724,16 @@ under the License.
             <filtering>true</filtering>
           </resource>
           <resource>
-            <directory>${basedir}/../../core/persistence-jpa-pgjsonb/src/test/resources/domains</directory>
+            <directory>${basedir}/../../core/persistence-jpa-json/src/test/resources/domains</directory>
             <targetPath>${project.build.directory}/classes/domains</targetPath>
             <filtering>true</filtering>
           </resource>
         </resources>
         <testResources>
           <testResource>
-            <directory>src/main/resources/pgjsonb</directory>
+            <directory>${basedir}/../../core/persistence-jpa-json/src/main/resources/pgjsonb</directory>
             <includes>
+              <include>persistence.properties</include>
               <include>indexes.xml</include>
               <include>views.xml</include>
             </includes>            
@@ -850,7 +851,165 @@ under the License.
         </testResources>
       </build>
     </profile>
+
+    <profile>
+      <id>myjson-it</id>
+
+      <properties>
+        <jdbcdriver.groupId>mysql</jdbcdriver.groupId>
+        <jdbcdriver.artifactId>mysql-connector-java</jdbcdriver.artifactId>
+      </properties>
+
+      <dependencies>
+        <dependency>
+          <groupId>org.apache.syncope.core</groupId>
+          <artifactId>syncope-core-persistence-jpa-json</artifactId>
+          <version>${project.version}</version>
+        </dependency>
     
+        <dependency>
+          <groupId>mysql</groupId>
+          <artifactId>mysql-connector-java</artifactId>
+          <version>${jdbc.mysql.version}</version>
+          <scope>test</scope>
+        </dependency>
+      </dependencies>
+
+      <build>
+        <defaultGoal>clean verify</defaultGoal>
+
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-war-plugin</artifactId>
+            <configuration>
+              <packagingExcludes>WEB-INF/classes/domains/Two*</packagingExcludes>
+            </configuration>
+          </plugin>
+
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-antrun-plugin</artifactId>
+            <inherited>true</inherited>
+            <executions>
+              <execution>
+                <id>remove-domain-Two</id>
+                <phase>prepare-package</phase>
+                <configuration>
+                  <target>
+                    <delete>
+                      <fileset dir="${project.build.directory}/classes/domains" includes="Two*" />
+                    </delete>
+                  </target>
+                </configuration>
+                <goals>
+                  <goal>run</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+
+          <plugin>
+            <groupId>io.fabric8</groupId>
+            <artifactId>docker-maven-plugin</artifactId>
+            <configuration>
+              <images>
+                <image>
+                  <name>mysql/mysql-server:${docker.mysql.version}</name>
+                  <run>
+                    <cmd>--skip-log-bin --server-id=1</cmd>
+                    <env>
+                      <MYSQL_ROOT_PASSWORD>password</MYSQL_ROOT_PASSWORD>
+                      <MYSQL_DATABASE>syncope</MYSQL_DATABASE>
+                      <MYSQL_USER>syncope</MYSQL_USER>
+                      <MYSQL_PASSWORD>syncope</MYSQL_PASSWORD>
+                    </env>
+                    <ports>
+                      <port>3306:3306</port>
+                    </ports>
+                    <wait>
+                      <log>MySQL init process done. Ready for start up.</log>
+                      <time>30000</time>
+                    </wait>
+                  </run>
+                </image>
+              </images>
+            </configuration>
+            <executions>
+              <execution>
+                <id>start-mysql</id>
+                <phase>pre-integration-test</phase>
+                <goals>
+                  <goal>start</goal>
+                </goals>
+              </execution>
+              <execution>
+                <id>stop-mysql</id>
+                <phase>post-integration-test</phase>
+                <goals>
+                  <goal>stop</goal>
+                  <goal>remove</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+
+          <plugin>
+            <groupId>org.codehaus.cargo</groupId>
+            <artifactId>cargo-maven2-plugin</artifactId>
+            <inherited>true</inherited>
+            <executions>
+              <execution>
+                <id>start-container</id>
+                <phase>pre-integration-test</phase>
+                <goals>
+                  <goal>start</goal>
+                </goals>
+              </execution>
+              <execution>
+                <id>stop-container</id>
+                <phase>post-integration-test</phase>
+                <goals>
+                  <goal>stop</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+
+        <resources>
+          <resource>
+            <directory>src/main/resources</directory>
+            <filtering>true</filtering>
+            <excludes>
+              <exclude>provisioning.properties</exclude>
+              <exclude>indexes.xml</exclude>
+              <exclude>views.xml</exclude>
+            </excludes>
+          </resource>
+          <resource>
+            <directory>src/main/resources/myjson</directory>
+            <filtering>true</filtering>
+          </resource>
+          <resource>
+            <directory>${basedir}/../../core/persistence-jpa-json/src/test/resources/domains</directory>
+            <targetPath>${project.build.directory}/classes/domains</targetPath>
+            <filtering>true</filtering>
+          </resource>
+        </resources>
+        <testResources>
+          <testResource>
+            <directory>${basedir}/../../core/persistence-jpa-json/src/main/resources/myjson</directory>
+            <includes>
+              <include>persistence.properties</include>
+              <include>indexes.xml</include>
+              <include>views.xml</include>
+            </includes>            
+          </testResource>
+        </testResources>
+      </build>
+    </profile>
+
     <profile>
       <id>mysql-it</id>
 
@@ -878,9 +1037,11 @@ under the License.
             <configuration>
               <images>
                 <image>
-                  <name>mysql/mysql-server:5.7</name>
+                  <name>mysql/mysql-server:${docker.mysql.version}</name>
                   <run>
+                    <cmd>--skip-log-bin --server-id=1</cmd>
                     <env>
+                      <MYSQL_ROOT_PASSWORD>password</MYSQL_ROOT_PASSWORD>
                       <MYSQL_DATABASE>syncope</MYSQL_DATABASE>
                       <MYSQL_USER>syncope</MYSQL_USER>
                       <MYSQL_PASSWORD>syncope</MYSQL_PASSWORD>
@@ -888,6 +1049,10 @@ under the License.
                     <ports>
                       <port>3306:3306</port>
                     </ports>
+                    <wait>
+                      <log>MySQL init process done. Ready for start up.</log>
+                      <time>30000</time>
+                    </wait>
                   </run>
                 </image>
               </images>
@@ -977,7 +1142,7 @@ under the License.
             <configuration>
               <images>
                 <image>
-                  <name>mariadb:10.3.7</name>
+                  <name>mariadb:${docker.mariadb.version}</name>
                   <run>
                     <env>
                       <MYSQL_ROOT_PASSWORD>password</MYSQL_ROOT_PASSWORD>
@@ -988,6 +1153,10 @@ under the License.
                     <ports>
                       <port>3306:3306</port>
                     </ports>
+                    <wait>
+                      <log>MySQL init process done. Ready for start up.</log>
+                      <time>30000</time>
+                    </wait>
                   </run>
                 </image>
               </images>
@@ -1281,17 +1450,6 @@ under the License.
           <groupId>org.apache.syncope.core</groupId>
           <artifactId>syncope-core-persistence-jpa</artifactId>
           <version>${project.version}</version>
-          <exclusions>
-            <exclusion>
-              <groupId>org.apache.bval</groupId>
-              <artifactId>bval-jsr</artifactId>
-            </exclusion>
-          </exclusions>
-        </dependency>
-        <dependency>
-          <groupId>org.hibernate.validator</groupId>
-          <artifactId>hibernate-validator</artifactId>
-          <version>6.0.11.Final</version>
         </dependency>
 
         <dependency>
@@ -1359,7 +1517,7 @@ under the License.
               <container>
                 <containerId>glassfish5x</containerId>
                 <zipUrlInstaller>
-                  <url>https://s3-eu-west-1.amazonaws.com/payara.fish/Payara+Downloads/5.183/payara-5.183.zip</url>
+                  <url>https://repo1.maven.org/maven2/fish/payara/distributions/payara/5.191/payara-5.191.zip</url>
                   <downloadDir>${settings.localRepository}/org/codehaus/cargo/cargo-container-archives</downloadDir>
                   <extractDir>${project.build.directory}/cargo/extract</extractDir>
                 </zipUrlInstaller>
@@ -1714,39 +1872,6 @@ under the License.
                 </configuration>
               </execution>
             </executions>
-          </plugin>
-
-          <!-- Adds Flowable test content -->
-          <plugin>
-            <groupId>org.codehaus.mojo</groupId>
-            <artifactId>xml-maven-plugin</artifactId>
-            <inherited>true</inherited>
-            <executions>
-              <execution>
-                <phase>prepare-package</phase>
-                <goals>
-                  <goal>transform</goal>
-                </goals>
-              </execution>
-            </executions>
-            <configuration>
-              <transformationSets>
-                <transformationSet>
-                  <dir>${project.build.directory}/classes</dir>
-                  <includes>
-                    <include>domains/MasterContent.xml</include>
-                  </includes>
-                  <outputDir>${project.build.directory}/classes</outputDir>
-                  <stylesheet>${basedir}/src/test/resources/addFlowableToContent.xsl</stylesheet>
-                  <outputProperties>
-                    <outputProperty>
-                      <name>indent</name>
-                      <value>yes</value>
-                    </outputProperty>
-                  </outputProperties>
-                </transformationSet>
-              </transformationSets>
-            </configuration>
           </plugin>                    
         </plugins>
         

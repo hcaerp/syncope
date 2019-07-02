@@ -24,9 +24,9 @@ COPY *.jar /tmp/
 
 COPY *.deb /tmp/
 
-COPY provisioning.properties.* /etc/apache-syncope/
-COPY *.properties /etc/apache-syncope/
-COPY Master.properties.* /etc/apache-syncope/domains/
+COPY *.properties* /etc/apache-syncope/
+COPY *.xml* /etc/apache-syncope/
+COPY domains/* /etc/apache-syncope/domains/
 
 COPY build.sh /tmp
 RUN chmod 755 /tmp/build.sh && sync && /tmp/build.sh && rm /tmp/build.sh

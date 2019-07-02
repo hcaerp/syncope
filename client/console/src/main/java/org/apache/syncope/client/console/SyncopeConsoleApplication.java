@@ -56,8 +56,12 @@ import org.apache.wicket.authroles.authentication.AuthenticatedWebApplication;
 import org.apache.wicket.authroles.authentication.AuthenticatedWebSession;
 import org.apache.wicket.authroles.authorization.strategies.role.metadata.MetaDataRoleAuthorizationStrategy;
 import org.apache.wicket.markup.html.WebPage;
-import org.apache.wicket.protocol.http.CsrfPreventionRequestCycleListener;
 import org.apache.wicket.protocol.http.WebApplication;
+import org.apache.wicket.protocol.ws.WebSocketAwareCsrfPreventionRequestCycleListener;
+import org.apache.wicket.request.cycle.IRequestCycleListener;
+import org.apache.wicket.protocol.ws.api.WebSocketResponse;
+import org.apache.wicket.request.cycle.RequestCycle;
+import org.apache.wicket.request.http.WebResponse;
 import org.apache.wicket.request.resource.AbstractResource;
 import org.apache.wicket.request.resource.IResource;
 import org.apache.wicket.request.resource.ResourceReference;
@@ -80,8 +84,6 @@ public class SyncopeConsoleApplication extends AuthenticatedWebApplication {
     public static SyncopeConsoleApplication get() {
         return (SyncopeConsoleApplication) WebApplication.get();
     }
-
-    private String site;
 
     private String anonymousUser;
 
@@ -141,8 +143,6 @@ public class SyncopeConsoleApplication extends AuthenticatedWebApplication {
         // read console.properties
         Properties props = PropertyUtils.read(getClass(), CONSOLE_PROPERTIES, "console.directory").getLeft();
 
-        site = props.getProperty("site");
-        Args.notNull(site, "<site>");
         anonymousUser = props.getProperty("anonymousUser");
         Args.notNull(anonymousUser, "<anonymousUser>");
         anonymousKey = props.getProperty("anonymousKey");
@@ -202,9 +202,21 @@ public class SyncopeConsoleApplication extends AuthenticatedWebApplication {
         getMarkupSettings().setCompressWhitespace(true);
 
         if (BooleanUtils.toBoolean(csrf)) {
-            getRequestCycleListeners().add(new CsrfPreventionRequestCycleListener());
+            getRequestCycleListeners().add(new WebSocketAwareCsrfPreventionRequestCycleListener());
         }
         getRequestCycleListeners().add(new SyncopeConsoleRequestCycleListener());
+        getRequestCycleListeners().add(new IRequestCycleListener() {
+
+            @Override
+            public void onEndRequest(final RequestCycle cycle) {
+                if (cycle.getResponse() instanceof WebResponse && !(cycle.getResponse() instanceof WebSocketResponse)) {
+                    WebResponse response = (WebResponse) cycle.getResponse();
+                    response.setHeader("X-XSS-Protection", "1; mode=block");
+                    response.setHeader("X-Content-Type-Options", "nosniff");
+                    response.setHeader("X-Frame-Options", "sameorigin");
+                }
+            }
+        });
 
         mountPage("/login", getSignInPageClass());
 
@@ -260,10 +272,6 @@ public class SyncopeConsoleApplication extends AuthenticatedWebApplication {
 
     public Class<? extends BasePage> getPageClass(final String key) {
         return pageClasses.get(key);
-    }
-
-    public String getSite() {
-        return site;
     }
 
     public String getAnonymousUser() {

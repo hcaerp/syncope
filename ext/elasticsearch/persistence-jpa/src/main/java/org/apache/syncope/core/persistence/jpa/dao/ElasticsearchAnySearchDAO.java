@@ -18,12 +18,16 @@
  */
 package org.apache.syncope.core.persistence.jpa.dao;
 
+import java.io.IOException;
 import java.lang.reflect.Field;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.commons.lang3.tuple.Triple;
 import org.apache.syncope.common.lib.SyncopeClientException;
@@ -52,15 +56,19 @@ import org.apache.syncope.core.persistence.api.entity.PlainAttrValue;
 import org.apache.syncope.core.persistence.api.entity.PlainSchema;
 import org.apache.syncope.core.persistence.api.entity.Realm;
 import org.apache.syncope.core.provisioning.api.utils.RealmUtils;
-import org.apache.syncope.core.spring.security.AuthContextUtils;
 import org.apache.syncope.ext.elasticsearch.client.ElasticsearchUtils;
-import org.elasticsearch.action.search.SearchRequestBuilder;
+import org.elasticsearch.action.search.SearchRequest;
 import org.elasticsearch.action.search.SearchType;
-import org.elasticsearch.client.Client;
+import org.elasticsearch.client.RequestOptions;
+import org.elasticsearch.client.RestHighLevelClient;
 import org.elasticsearch.index.query.DisMaxQueryBuilder;
 import org.elasticsearch.index.query.MatchNoneQueryBuilder;
 import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
+import org.elasticsearch.search.SearchHit;
+import org.elasticsearch.search.builder.SearchSourceBuilder;
+import org.elasticsearch.search.sort.FieldSortBuilder;
+import org.elasticsearch.search.sort.SortBuilder;
 import org.elasticsearch.search.sort.SortOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -72,7 +80,7 @@ public class ElasticsearchAnySearchDAO extends AbstractAnySearchDAO {
     private static final QueryBuilder EMPTY_QUERY_BUILDER = new MatchNoneQueryBuilder();
 
     @Autowired
-    private Client client;
+    private RestHighLevelClient client;
 
     @Autowired
     private ElasticsearchUtils elasticsearchUtils;
@@ -112,38 +120,48 @@ public class ElasticsearchAnySearchDAO extends AbstractAnySearchDAO {
         return Pair.of(builder, dynRealmKeys);
     }
 
-    private SearchRequestBuilder searchRequestBuilder(
+    private SearchRequest searchRequest(
             final Set<String> adminRealms,
             final SearchCond cond,
-            final AnyTypeKind kind) {
+            final AnyTypeKind kind,
+            final int from,
+            final int size,
+            final List<SortBuilder<?>> sortBuilders) {
 
         Pair<DisMaxQueryBuilder, Set<String>> filter = adminRealmsFilter(adminRealms);
-
-        return client.prepareSearch(AuthContextUtils.getDomain().toLowerCase()).
-                setTypes(kind.name()).
-                setSearchType(SearchType.QUERY_THEN_FETCH).
-                setQuery(SyncopeConstants.FULL_ADMIN_REALMS.equals(adminRealms)
+        SearchSourceBuilder sourceBuilder = new SearchSourceBuilder().
+                query(SyncopeConstants.FULL_ADMIN_REALMS.equals(adminRealms)
                         ? getQueryBuilder(cond, kind)
                         : QueryBuilders.boolQuery().
                                 must(filter.getLeft()).
-                                must(getQueryBuilder(buildEffectiveCond(cond, filter.getRight()), kind)));
+                                must(getQueryBuilder(buildEffectiveCond(cond, filter.getRight()), kind))).
+                from(from).
+                size(size);
+        sortBuilders.forEach(sort -> sourceBuilder.sort(sort));
+
+        return new SearchRequest(elasticsearchUtils.getContextDomainName(kind)).
+                searchType(SearchType.QUERY_THEN_FETCH).
+                source(sourceBuilder);
     }
 
     @Override
     protected int doCount(final Set<String> adminRealms, final SearchCond cond, final AnyTypeKind kind) {
-        SearchRequestBuilder builder = searchRequestBuilder(adminRealms, cond, kind).
-                setFrom(0).setSize(0);
-
-        return (int) builder.get().getHits().getTotalHits();
+        SearchRequest request = searchRequest(adminRealms, cond, kind, 0, 0, Collections.emptyList());
+        try {
+            return (int) client.search(request, RequestOptions.DEFAULT).getHits().getTotalHits();
+        } catch (IOException e) {
+            LOG.error("Search error", e);
+            return 0;
+        }
     }
 
-    private void addSort(
-            final SearchRequestBuilder builder,
+    private List<SortBuilder<?>> sortBuilders(
             final AnyTypeKind kind,
             final List<OrderByClause> orderBy) {
 
         AnyUtils anyUtils = anyUtilsFactory.getInstance(kind);
 
+        List<SortBuilder<?>> builders = new ArrayList<>();
         orderBy.forEach(clause -> {
             String sortName = null;
 
@@ -163,9 +181,10 @@ public class ElasticsearchAnySearchDAO extends AbstractAnySearchDAO {
             if (sortName == null) {
                 LOG.warn("Cannot build any valid clause from {}", clause);
             } else {
-                builder.addSort(sortName, SortOrder.valueOf(clause.getDirection().name()));
+                builders.add(new FieldSortBuilder(sortName).order(SortOrder.valueOf(clause.getDirection().name())));
             }
         });
+        return builders;
     }
 
     @Override
@@ -177,14 +196,24 @@ public class ElasticsearchAnySearchDAO extends AbstractAnySearchDAO {
             final List<OrderByClause> orderBy,
             final AnyTypeKind kind) {
 
-        SearchRequestBuilder builder = searchRequestBuilder(adminRealms, cond, kind).
-                setFrom(page <= 0 ? 0 : page - 1).
-                setSize(itemsPerPage < 0 ? elasticsearchUtils.getIndexMaxResultWindow() : itemsPerPage);
-        addSort(builder, kind, orderBy);
+        SearchRequest request = searchRequest(
+                adminRealms,
+                cond,
+                kind,
+                (itemsPerPage * (page <= 0 ? 0 : page - 1)),
+                (itemsPerPage < 0 ? elasticsearchUtils.getIndexMaxResultWindow() : itemsPerPage),
+                sortBuilders(kind, orderBy));
 
-        return buildResult(Stream.of(builder.get().getHits().getHits()).
-                map(hit -> hit.getId()).collect(Collectors.toList()),
-                kind);
+        SearchHit[] esResult = null;
+        try {
+            esResult = client.search(request, RequestOptions.DEFAULT).getHits().getHits();
+        } catch (Exception e) {
+            LOG.error("While searching in Elasticsearch", e);
+        }
+
+        return ArrayUtils.isEmpty(esResult)
+                ? Collections.emptyList()
+                : buildResult(Stream.of(esResult).map(hit -> hit.getId()).collect(Collectors.toList()), kind);
     }
 
     private QueryBuilder getQueryBuilder(final SearchCond cond, final AnyTypeKind kind) {
@@ -352,8 +381,20 @@ public class ElasticsearchAnySearchDAO extends AbstractAnySearchDAO {
                 break;
 
             case ILIKE:
-                builder = QueryBuilders.queryStringQuery(
-                        schema.getKey() + ":" + cond.getExpression().replace('%', '*').toLowerCase());
+                StringBuilder output = new StringBuilder();
+                for (char c : cond.getExpression().toLowerCase().toCharArray()) {
+                    if (c == '%') {
+                        output.append(".*");
+                    } else if (Character.isLetter(c)) {
+                        output.append('[').
+                                append(c).
+                                append(Character.toUpperCase(c)).
+                                append(']');
+                    } else {
+                        output.append(c);
+                    }
+                }
+                builder = QueryBuilders.regexpQuery(schema.getKey(), output.toString());
                 break;
 
             case LIKE:

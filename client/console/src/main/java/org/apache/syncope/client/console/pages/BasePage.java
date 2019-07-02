@@ -113,9 +113,9 @@ public class BasePage extends WebPage implements IAjaxIndicatorAware {
         Label version = new Label("version", platformInfo.getVersion());
         String versionLink = StringUtils.isNotBlank(platformInfo.getBuildNumber())
                 && platformInfo.getVersion().endsWith("-SNAPSHOT")
-                ? "https://git-wip-us.apache.org/repos/asf?p=syncope.git;a=commit;h="
+                ? "https://gitbox.apache.org/repos/asf?p=syncope.git;a=commit;h="
                 + platformInfo.getBuildNumber()
-                : "https://cwiki.apache.org/confluence/display/SYNCOPE/Jazz";
+                : "https://cwiki.apache.org/confluence/display/SYNCOPE/Fusion";
         version.add(new AttributeModifier("onclick", "window.open('" + versionLink + "', '_blank')"));
         body.add(version);
 
@@ -205,7 +205,7 @@ public class BasePage extends WebPage implements IAjaxIndicatorAware {
         liContainer = new WebMarkupContainer(getLIContainerId("types"));
         confULContainer.add(liContainer);
         link = BookmarkablePageLinkBuilder.build("types", Types.class);
-        MetaDataRoleAuthorizationStrategy.authorize(link, WebPage.RENDER, StandardEntitlement.SCHEMA_LIST);
+        MetaDataRoleAuthorizationStrategy.authorize(link, WebPage.RENDER, StandardEntitlement.ANYTYPECLASS_LIST);
         liContainer.add(link);
 
         liContainer = new WebMarkupContainer(getLIContainerId("security"));

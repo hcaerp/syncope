@@ -1116,4 +1116,79 @@ public class GroupITCase extends AbstractITCase {
         assertNotNull(groupTO);
         assertEquals("11.23", groupTO.getPlainAttr(doubleSchemaName).get().getValues().get(0));
     }
+
+    @Test
+    public void issueSYNCOPE1467() {
+        GroupTO groupTO = null;
+        try {
+            groupTO = new GroupTO();
+            groupTO.setRealm(SyncopeConstants.ROOT_REALM);
+            groupTO.setName("issueSYNCOPE1467");
+            groupTO.getResources().add(RESOURCE_NAME_LDAP);
+
+            groupTO = createGroup(groupTO).getEntity();
+            assertNotNull(groupTO);
+            assertTrue(groupTO.getResources().contains(RESOURCE_NAME_LDAP));
+
+            ConnObjectTO connObjectTO =
+                    resourceService.readConnObject(RESOURCE_NAME_LDAP, AnyTypeKind.GROUP.name(), groupTO.getKey());
+            assertNotNull(connObjectTO);
+            assertEquals("issueSYNCOPE1467", connObjectTO.getAttr("cn").get().getValues().get(0));
+
+            GroupPatch groupPatch = new GroupPatch();
+            groupPatch.setKey(groupTO.getKey());
+            groupPatch.setName(new StringReplacePatchItem.Builder().value("fixedSYNCOPE1467").build());
+
+            assertNotNull(updateGroup(groupPatch).getEntity());
+
+            // Assert resources are present
+            ResourceTO ldap = resourceService.read(RESOURCE_NAME_LDAP);
+            assertNotNull(ldap);
+
+            connObjectTO = resourceService.
+                    readConnObject(RESOURCE_NAME_LDAP, AnyTypeKind.GROUP.name(), groupTO.getKey());
+            assertNotNull(connObjectTO);
+            assertEquals("fixedSYNCOPE1467", connObjectTO.getAttr("cn").get().getValues().get(0));
+        } finally {
+            if (groupTO.getKey() != null) {
+                groupService.delete(groupTO.getKey());
+            }
+        }
+    }
+
+    @Test
+    public void issueSYNCOPE1472() {
+        // 1. update group artDirector by assigning twice resource-testdb and auxiliary class csv
+        GroupPatch groupPatch = new GroupPatch();
+        groupPatch.setKey("ece66293-8f31-4a84-8e8d-23da36e70846");
+        groupPatch.getResources().add(new StringPatchItem.Builder()
+                .value(RESOURCE_NAME_TESTDB)
+                .operation(PatchOperation.ADD_REPLACE)
+                .build());
+        groupPatch.getAuxClasses().add(new StringPatchItem.Builder()
+                .operation(PatchOperation.ADD_REPLACE)
+                .value("csv")
+                .build());
+        for (int i = 0; i < 2; i++) {
+            updateGroup(groupPatch);
+        }
+
+        // 2. remove resources and auxiliary classes
+        groupPatch.getResources().clear();
+        groupPatch.getResources().add(new StringPatchItem.Builder()
+                .value(RESOURCE_NAME_TESTDB)
+                .operation(PatchOperation.DELETE)
+                .build());
+        groupPatch.getAuxClasses().clear();
+        groupPatch.getAuxClasses().add(new StringPatchItem.Builder()
+                .value("csv")
+                .operation(PatchOperation.DELETE)
+                .build());
+
+        updateGroup(groupPatch);
+
+        GroupTO groupTO = groupService.read("ece66293-8f31-4a84-8e8d-23da36e70846");
+        assertFalse(groupTO.getResources().contains(RESOURCE_NAME_TESTDB), "Should not contain removed resources");
+        assertFalse(groupTO.getAuxClasses().contains("csv"), "Should not contain removed auxiliary classes");
+    }
 }

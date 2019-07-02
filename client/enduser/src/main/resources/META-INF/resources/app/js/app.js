@@ -226,6 +226,18 @@ app.config(['$stateProvider', '$urlRouterProvider', '$httpProvider', '$translate
                   }]
               }
             })
+            /* <Extensions> */
+            .state('update.userRequests', {
+              url: '/user-requests',
+              templateUrl: 'views/user-requests.html',
+              resolve: {
+                'authenticated': ['AuthService',
+                  function (AuthService) {
+                    return AuthService.islogged();
+                  }]
+              }
+            })
+            /* </Extensions> */
             .state('update.finish', {
               url: '/finish',
               templateUrl: 'views/user-form-finish.html',
@@ -427,9 +439,18 @@ app.controller('ApplicationController', ['$scope', '$rootScope', 'InfoService', 
                     $rootScope.dynTemplate = response;
 
                     /*
-                     * Wizard steps from JSON
+                     * Wizard steps from JSON, if some extensions are enabled add steps dynamically
                      */
                     $scope.wizard = response.wizard.steps;
+                    $scope.creationWizard = $scope.clone($scope.wizard);
+                    /* <Extensions> */
+                    var finish = $scope.wizard.finish;
+                    delete $scope.wizard['finish'];
+                    $scope.wizard.userRequests = {
+                      "url": "/user-requests"
+                    };
+                    $scope.wizard.finish = finish;
+                    /* </Extensions> */
                     $scope.wizardFirstStep = response.wizard.firstStep;
 
                     callback($rootScope.dynTemplate);
@@ -549,6 +570,15 @@ app.controller('ApplicationController', ['$scope', '$rootScope', 'InfoService', 
         }
       };
 
+      /* 
+       * Date formatters
+       */
+
+      // from timestamp
+      $rootScope.formatDate = function (timestamp) {
+        return new Date(timestamp).toLocaleString();
+      };
+
       /*
        |--------------------------------------------------------------------------
        | Notification mgmt
@@ -650,4 +680,41 @@ app.controller('ApplicationController', ['$scope', '$rootScope', 'InfoService', 
         $templateCache.removeAll();
       };
     };
+
+    $scope.clone = function clone(obj) {
+      var copy;
+
+      // Handle the 3 simple types, and null or undefined
+      if (null == obj || "object" != typeof obj)
+        return obj;
+
+      // Handle Date
+      if (obj instanceof Date) {
+        copy = new Date();
+        copy.setTime(obj.getTime());
+        return copy;
+      }
+
+      // Handle Array
+      if (obj instanceof Array) {
+        copy = [];
+        for (var i = 0, len = obj.length; i < len; i++) {
+          copy[i] = clone(obj[i]);
+        }
+        return copy;
+      }
+
+      // Handle Object
+      if (obj instanceof Object) {
+        copy = {};
+        for (var attr in obj) {
+          if (obj.hasOwnProperty(attr))
+            copy[attr] = clone(obj[attr]);
+        }
+        return copy;
+      }
+
+      throw new Error("Unable to copy obj! Its type isn't supported.");
+    };
+
   }]);

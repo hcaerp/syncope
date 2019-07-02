@@ -31,6 +31,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.annotation.Resource;
 import javax.persistence.NoResultException;
+import javax.persistence.PersistenceException;
 import javax.persistence.Query;
 import javax.persistence.TypedQuery;
 import org.apache.commons.lang3.tuple.ImmutablePair;
@@ -39,8 +40,8 @@ import org.apache.syncope.common.lib.SyncopeConstants;
 import org.apache.syncope.common.lib.types.AnyTypeKind;
 import org.apache.syncope.common.lib.types.EntityViolationType;
 import org.apache.syncope.common.lib.types.StandardEntitlement;
-import org.apache.syncope.core.provisioning.api.utils.policy.AccountPolicyException;
-import org.apache.syncope.core.provisioning.api.utils.policy.PasswordPolicyException;
+import org.apache.syncope.core.spring.policy.AccountPolicyException;
+import org.apache.syncope.core.spring.policy.PasswordPolicyException;
 import org.apache.syncope.core.spring.security.AuthContextUtils;
 import org.apache.syncope.core.spring.security.DelegatedAdministrationException;
 import org.apache.syncope.core.persistence.api.attrvalue.validation.InvalidEntityException;
@@ -75,28 +76,28 @@ import org.springframework.transaction.annotation.Transactional;
 
 public class JPAUserDAO extends AbstractAnyDAO<User> implements UserDAO {
 
-    private static final Pattern USERNAME_PATTERN =
+    protected static final Pattern USERNAME_PATTERN =
             Pattern.compile("^" + SyncopeConstants.NAME_PATTERN, Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
 
-    private static final Encryptor ENCRYPTOR = Encryptor.getInstance();
+    protected static final Encryptor ENCRYPTOR = Encryptor.getInstance();
 
     @Autowired
-    private RoleDAO roleDAO;
+    protected RoleDAO roleDAO;
 
     @Autowired
-    private AccessTokenDAO accessTokenDAO;
+    protected AccessTokenDAO accessTokenDAO;
 
     @Autowired
-    private RealmDAO realmDAO;
+    protected RealmDAO realmDAO;
 
     @Autowired
-    private GroupDAO groupDAO;
+    protected GroupDAO groupDAO;
 
     @Resource(name = "adminUser")
-    private String adminUser;
+    protected String adminUser;
 
     @Resource(name = "anonymousUser")
-    private String anonymousUser;
+    protected String anonymousUser;
 
     @Override
     protected AnyUtils init() {
@@ -220,7 +221,7 @@ public class JPAUserDAO extends AbstractAnyDAO<User> implements UserDAO {
         return entityManager().find(JPAUMembership.class, key);
     }
 
-    private List<PasswordPolicy> getPasswordPolicies(final User user) {
+    protected List<PasswordPolicy> getPasswordPolicies(final User user) {
         List<PasswordPolicy> policies = new ArrayList<>();
 
         PasswordPolicy policy;
@@ -254,7 +255,7 @@ public class JPAUserDAO extends AbstractAnyDAO<User> implements UserDAO {
         return query.getResultList();
     }
 
-    private List<AccountPolicy> getAccountPolicies(final User user) {
+    protected List<AccountPolicy> getAccountPolicies(final User user) {
         List<AccountPolicy> policies = new ArrayList<>();
 
         // add resource policies
@@ -321,6 +322,8 @@ public class JPAUserDAO extends AbstractAnyDAO<User> implements UserDAO {
                     user.getPasswordHistory().remove(i);
                 }
             }
+        } catch (PersistenceException | InvalidEntityException e) {
+            throw e;
         } catch (Exception e) {
             LOG.error("Invalid password for {}", user, e);
             throw new InvalidEntityException(User.class, EntityViolationType.InvalidPassword, e.getMessage());
@@ -361,10 +364,9 @@ public class JPAUserDAO extends AbstractAnyDAO<User> implements UserDAO {
                         && user.getFailedLogins() > policy.getMaxAuthenticationAttempts() && !user.isSuspended();
                 propagateSuspension |= policy.isPropagateSuspension();
             }
+        } catch (PersistenceException | InvalidEntityException e) {
+            throw e;
         } catch (Exception e) {
-            if (e instanceof InvalidEntityException) {
-                throw (InvalidEntityException) e;
-            }
             LOG.error("Invalid username for {}", user, e);
             throw new InvalidEntityException(User.class, EntityViolationType.InvalidUsername, e.getMessage());
         }
@@ -372,13 +374,12 @@ public class JPAUserDAO extends AbstractAnyDAO<User> implements UserDAO {
         return ImmutablePair.of(suspend, propagateSuspension);
     }
 
-    private Pair<User, Pair<Set<String>, Set<String>>> doSave(final User user) {
+    protected Pair<User, Pair<Set<String>, Set<String>>> doSave(final User user) {
         // 1. save clear password value before save
         String clearPwd = user.getClearPassword();
 
-        // 2. save and flush to trigger entity validation        
+        // 2. save
         User merged = super.save(user);
-        entityManager().flush();
 
         // 3. set back the sole clear password value
         JPAUser.class.cast(merged).setClearPassword(clearPwd);

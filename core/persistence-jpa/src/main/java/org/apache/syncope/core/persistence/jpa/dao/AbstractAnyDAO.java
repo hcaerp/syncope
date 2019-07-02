@@ -61,6 +61,7 @@ import org.apache.syncope.core.persistence.api.entity.user.User;
 import org.apache.syncope.core.persistence.jpa.entity.user.JPAUser;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -73,12 +74,15 @@ public abstract class AbstractAnyDAO<A extends Any<?>> extends AbstractDAO<A> im
     protected ApplicationEventPublisher publisher;
 
     @Autowired
+    @Lazy
     protected PlainSchemaDAO plainSchemaDAO;
 
     @Autowired
+    @Lazy
     protected DerSchemaDAO derSchemaDAO;
 
     @Autowired
+    @Lazy
     protected DynRealmDAO dynRealmDAO;
 
     private AnyUtils anyUtils;
@@ -172,13 +176,12 @@ public abstract class AbstractAnyDAO<A extends Any<?>> extends AbstractDAO<A> im
     @Override
     @SuppressWarnings("unchecked")
     public List<A> findByPlainAttrValue(
-            final String schemaKey,
+            final PlainSchema schema,
             final PlainAttrValue attrValue,
             final boolean ignoreCaseMatch) {
 
-        PlainSchema schema = plainSchemaDAO.find(schemaKey);
         if (schema == null) {
-            LOG.error("Invalid schema '{}'", schemaKey);
+            LOG.error("No PlainSchema");
             return Collections.<A>emptyList();
         }
 
@@ -186,7 +189,7 @@ public abstract class AbstractAnyDAO<A extends Any<?>> extends AbstractDAO<A> im
                 ? anyUtils().plainAttrUniqueValueClass().getName()
                 : anyUtils().plainAttrValueClass().getName();
         Query query = findByPlainAttrValueQuery(entityName, ignoreCaseMatch);
-        query.setParameter("schemaKey", schemaKey);
+        query.setParameter("schemaKey", schema.getKey());
         query.setParameter("stringValue", attrValue.getStringValue());
         query.setParameter("booleanValue", attrValue.getBooleanValue());
         if (attrValue.getDateValue() == null) {
@@ -210,21 +213,20 @@ public abstract class AbstractAnyDAO<A extends Any<?>> extends AbstractDAO<A> im
 
     @Override
     public A findByPlainAttrUniqueValue(
-            final String schemaKey,
+            final PlainSchema schema,
             final PlainAttrValue attrUniqueValue,
             final boolean ignoreCaseMatch) {
 
-        PlainSchema schema = plainSchemaDAO.find(schemaKey);
         if (schema == null) {
-            LOG.error("Invalid schema '{}'", schemaKey);
+            LOG.error("No PlainSchema");
             return null;
         }
         if (!schema.isUniqueConstraint()) {
-            LOG.error("This schema has not unique constraint: '{}'", schemaKey);
+            LOG.error("This schema has not unique constraint: '{}'", schema.getKey());
             return null;
         }
 
-        List<A> result = findByPlainAttrValue(schemaKey, attrUniqueValue, ignoreCaseMatch);
+        List<A> result = findByPlainAttrValue(schema, attrUniqueValue, ignoreCaseMatch);
         return result.isEmpty()
                 ? null
                 : result.get(0);
@@ -372,10 +374,9 @@ public abstract class AbstractAnyDAO<A extends Any<?>> extends AbstractDAO<A> im
     }
 
     @Override
-    public List<A> findByDerAttrValue(final String schemaKey, final String value, final boolean ignoreCaseMatch) {
-        DerSchema schema = derSchemaDAO.find(schemaKey);
+    public List<A> findByDerAttrValue(final DerSchema schema, final String value, final boolean ignoreCaseMatch) {
         if (schema == null) {
-            LOG.error("Invalid schema '{}'", schemaKey);
+            LOG.error("No DerSchema");
             return Collections.<A>emptyList();
         }
 

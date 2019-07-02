@@ -311,7 +311,7 @@ becomes:
 ====
 
 [discrete]
-===== Select the <<flowable-user-workflow-adapter>>
+===== Enable the <<flowable-user-workflow-adapter>>
 
 Add the following dependency to `core/pom.xml`:
 
@@ -325,17 +325,6 @@ Add the following dependency to `core/pom.xml`:
 ----
 
 Copy `core/src/main/resources/all/workflow.properties` to `core/src/main/resources/workflow.properties`.
-
-Add the following dependency to `console/pom.xml`:
-
-[source,xml,subs="verbatim,attributes"]
-----
-<dependency>
-  <groupId>org.apache.syncope.ext.flowable</groupId>
-  <artifactId>syncope-ext-flowable-client-console</artifactId>
-  <version>${syncope.version}</version>
-</dependency>
-----
 
 [discrete]
 ===== Enable the <<apache-camel-provisioning-manager>>
@@ -478,7 +467,7 @@ with
 
 ....
 classpath*:/coreContext.xml
-classpath*:/elasticsearchClientContext.xml
+classpath:/elasticsearchClientContext.xml
 classpath*:/securityContext.xml
 classpath*:/logicContext.xml
 classpath*:/restCXFContext.xml
@@ -486,6 +475,15 @@ classpath*:/persistenceContext.xml
 classpath*:/provisioning*Context.xml
 classpath*:/workflow*Context.xml
 ....
+
+It is also required to initialize the Elasticsearch indexes: add a new Java <<implementations,implementation>> for
+`TASKJOB_DELEGATE` and use `org.apache.syncope.core.provisioning.java.job.ElasticsearchReindex` as class. +
+Then, create a new <<tasks-custom, custom task>>, select the implementation just created as job delegate and execute it.
+
+[TIP]
+The `org.apache.syncope.core.provisioning.java.job.ElasticsearchReindex` custom task created above is not meant for
+scheduled execution; rather, it can be run every time you want to blank and re-create the Elasticsearch indexes
+starting from Syncope's users, groups and any objects.
 
 [discrete]
 ===== Enable the <<SCIM>> extension
@@ -547,6 +545,20 @@ By following such conventions, the new REST endpoint will be automatically picke
 When providing custom Java classes implementing the defined interfaces or extending the existing
 implementations, their package *must* be rooted under `org.apache.syncope.client.console`, otherwise they will not be
 available at runtime.
+
+[discrete]
+===== Enable the <<flowable-user-workflow-adapter>>
+
+Add the following dependency to `console/pom.xml`:
+
+[source,xml,subs="verbatim,attributes"]
+----
+<dependency>
+  <groupId>org.apache.syncope.ext.flowable</groupId>
+  <artifactId>syncope-ext-flowable-client-console</artifactId>
+  <version>${syncope.version}</version>
+</dependency>
+----
 
 [discrete]
 ===== Enable the <<apache-camel-provisioning-manager>>
@@ -617,6 +629,20 @@ generated under the local project's `enduser/src/main/webapp/app/` directory and
 
 The files in use by the Apache Wicket-based backend are still subject to the general
 <<override-behavior,override behavior>>, instead.
+
+[discrete]
+===== Enable the <<flowable-user-workflow-adapter>>
+
+Add the following dependency to `enduser/pom.xml`:
+
+[source,xml,subs="verbatim,attributes"]
+----
+<dependency>
+  <groupId>org.apache.syncope.ext.flowable</groupId>
+  <artifactId>syncope-ext-flowable-client-enduser</artifactId>
+  <version>${syncope.version}</version>
+</dependency>
+----
 
 [discrete]
 ===== Enable the <<saml-2-0-service-provider>> extension
@@ -827,7 +853,7 @@ An empty `attributes` field translates to skip filtering and show all attributes
 ```
 shows all `PLAIN` attributes.
 
-If all attributes are to be hidden, please use [[customization-enduser-template]] to hide the full wizard step, instead.
+If all attributes are to be hidden, please use <<customization-enduser-template>> to hide the full wizard step, instead.
 ====
 
 [NOTE]

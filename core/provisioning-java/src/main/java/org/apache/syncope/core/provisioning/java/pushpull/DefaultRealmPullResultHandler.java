@@ -24,7 +24,6 @@ import java.util.List;
 import java.util.Set;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.apache.syncope.common.lib.SyncopeClientException;
-import org.apache.syncope.common.lib.to.PropagationTaskTO;
 import org.apache.syncope.common.lib.to.RealmTO;
 import org.apache.syncope.common.lib.types.AnyTypeKind;
 import org.apache.syncope.common.lib.types.AuditElements;
@@ -43,6 +42,7 @@ import org.apache.syncope.core.persistence.api.entity.resource.OrgUnit;
 import org.apache.syncope.core.persistence.api.entity.task.PullTask;
 import org.apache.syncope.core.provisioning.api.PropagationByResource;
 import org.apache.syncope.core.provisioning.api.propagation.PropagationException;
+import org.apache.syncope.core.provisioning.api.propagation.PropagationTaskInfo;
 import org.apache.syncope.core.provisioning.api.pushpull.IgnoreProvisionException;
 import org.apache.syncope.core.provisioning.api.pushpull.ProvisioningReport;
 import org.apache.syncope.core.provisioning.api.pushpull.PullActions;
@@ -238,8 +238,8 @@ public class DefaultRealmPullResultHandler
             PropagationByResource propByRes = new PropagationByResource();
             propByRes.addAll(ResourceOperation.CREATE, realm.getResourceKeys());
             if (unmatchingRule == UnmatchingRule.ASSIGN) {
-                List<PropagationTaskTO> tasks = propagationManager.createTasks(realm, propByRes, null);
-                taskExecutor.execute(tasks, false);
+                List<PropagationTaskInfo> taskInfos = propagationManager.createTasks(realm, propByRes, null);
+                taskExecutor.execute(taskInfos, false);
             }
 
             RealmTO actual = binder.getRealmTO(realm, true);
@@ -324,8 +324,8 @@ public class DefaultRealmPullResultHandler
                         realm = realmDAO.save(realm);
                         RealmTO updated = binder.getRealmTO(realm, true);
 
-                        List<PropagationTaskTO> tasks = propagationManager.createTasks(realm, propByRes, null);
-                        taskExecutor.execute(tasks, false);
+                        List<PropagationTaskInfo> taskInfos = propagationManager.createTasks(realm, propByRes, null);
+                        taskExecutor.execute(taskInfos, false);
 
                         for (PullActions action : profile.getActions()) {
                             action.after(profile, delta, updated, result);
@@ -608,8 +608,8 @@ public class DefaultRealmPullResultHandler
 
                         PropagationByResource propByRes = new PropagationByResource();
                         propByRes.addAll(ResourceOperation.DELETE, realm.getResourceKeys());
-                        List<PropagationTaskTO> tasks = propagationManager.createTasks(realm, propByRes, null);
-                        taskExecutor.execute(tasks, false);
+                        List<PropagationTaskInfo> taskInfos = propagationManager.createTasks(realm, propByRes, null);
+                        taskExecutor.execute(taskInfos, false);
 
                         realmDAO.delete(realm);
 
@@ -678,7 +678,7 @@ public class DefaultRealmPullResultHandler
         LOG.debug("Transformed {} for {} as {}",
                 processed.getDeltaType(), processed.getUid().getUidValue(), processed.getObject().getObjectClass());
 
-        List<String> keys = pullUtils.match(processed.getObject(), orgUnit);
+        List<String> keys = pullUtils.match(processed, orgUnit);
         LOG.debug("Match found for {} as {}: {}",
                 processed.getUid().getUidValue(), processed.getObject().getObjectClass(), keys);
 
@@ -774,7 +774,9 @@ public class DefaultRealmPullResultHandler
             this.latestResult = result;
         }
 
-        notificationManager.createTasks(AuditElements.EventCategoryType.PULL,
+        notificationManager.createTasks(
+                AuthContextUtils.getUsername(),
+                AuditElements.EventCategoryType.PULL,
                 REALM_TYPE.toLowerCase(),
                 profile.getTask().getResource().getKey(),
                 event,

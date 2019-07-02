@@ -23,10 +23,12 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import javax.ws.rs.core.Response;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.syncope.client.lib.SyncopeClient;
+import org.apache.syncope.common.lib.SyncopeClientException;
 import org.apache.syncope.common.lib.SyncopeConstants;
 import org.apache.syncope.common.lib.patch.AnyObjectPatch;
 import org.apache.syncope.common.lib.patch.AttrPatch;
@@ -40,6 +42,7 @@ import org.apache.syncope.common.lib.to.MembershipTO;
 import org.apache.syncope.common.lib.to.RoleTO;
 import org.apache.syncope.common.lib.to.UserTO;
 import org.apache.syncope.common.lib.types.AnyTypeKind;
+import org.apache.syncope.common.lib.types.ClientExceptionType;
 import org.apache.syncope.common.rest.api.beans.AnyQuery;
 import org.apache.syncope.common.rest.api.service.RoleService;
 import org.apache.syncope.fit.AbstractITCase;
@@ -87,7 +90,15 @@ public class SearchITCase extends AbstractITCase {
 
         matchingUsers = userService.search(
                 new AnyQuery.Builder().realm(SyncopeConstants.ROOT_REALM).
-                        fiql("(fullname=~*oSsINi)").page(1).size(2).build());
+                        fiql("fullname=~*oSsINi").page(1).size(2).build());
+        assertNotNull(matchingUsers);
+        assertEquals(1, matchingUsers.getResult().size());
+        assertEquals("rossini", matchingUsers.getResult().iterator().next().getUsername());
+        assertEquals("1417acbe-cbf6-4277-9372-e75e04f97000", matchingUsers.getResult().iterator().next().getKey());
+
+        matchingUsers = userService.search(
+                new AnyQuery.Builder().realm(SyncopeConstants.ROOT_REALM).
+                        fiql("fullname=~*ino*rossini*").page(1).size(2).build());
         assertNotNull(matchingUsers);
         assertEquals(1, matchingUsers.getResult().size());
         assertEquals("rossini", matchingUsers.getResult().iterator().next().getUsername());
@@ -423,15 +434,16 @@ public class SearchITCase extends AbstractITCase {
     @Test
     public void orderBy() {
         PagedResult<UserTO> matchingUsers = userService.search(
-                new AnyQuery.Builder().realm(SyncopeConstants.ROOT_REALM).
-                        fiql(SyncopeClient.getUserSearchConditionBuilder().is("userId").equalTo("*@apache.org").query()).
-                        orderBy(SyncopeClient.getOrderByClauseBuilder().asc("status").desc("firstname").build()).build());
+                new AnyQuery.Builder().realm(SyncopeConstants.ROOT_REALM).fiql(
+                        SyncopeClient.getUserSearchConditionBuilder().is("userId").equalTo("*@apache.org").query()).
+                        orderBy(SyncopeClient.getOrderByClauseBuilder().asc("status").desc("firstname").build()).
+                        build());
         assertNotNull(matchingUsers);
 
         assertFalse(matchingUsers.getResult().isEmpty());
-        for (UserTO user : matchingUsers.getResult()) {
+        matchingUsers.getResult().forEach(user -> {
             assertNotNull(user);
-        }
+        });
     }
 
     @Test
@@ -491,6 +503,14 @@ public class SearchITCase extends AbstractITCase {
                     new MembershipPatch.Builder().group("29f96485-729e-4d31-88a1-6fc60e4677f3").build());
             updateAnyObject(anyObjectPatch);
 
+            if (ElasticsearchDetector.isElasticSearchEnabled(syncopeService)) {
+                try {
+                    Thread.sleep(2000);
+                } catch (InterruptedException ex) {
+                    // ignore
+                }
+            }
+
             PagedResult<AnyObjectTO> matching = anyObjectService.search(new AnyQuery.Builder().fiql(
                     SyncopeClient.getAnyObjectSearchConditionBuilder(service.getKey()).
                             inGroups("29f96485-729e-4d31-88a1-6fc60e4677f3").
@@ -541,5 +561,69 @@ public class SearchITCase extends AbstractITCase {
                 orderBy("userOwner DESC").build());
         assertNotNull(groups);
         assertFalse(groups.getResult().isEmpty());
+    }
+
+    @Test
+    public void issueSYNCOPE1416() {
+        // check the search for attributes of type different from stringvalue
+        PagedResult<UserTO> issueSYNCOPE1416 = userService.search(new AnyQuery.Builder().
+                realm(SyncopeConstants.ROOT_REALM).
+                fiql(SyncopeClient.getUserSearchConditionBuilder().
+                        is("loginDate").lexicalNotBefore("2009-05-26").
+                        and("username").equalTo("rossini").query()).
+                orderBy(SyncopeClient.getOrderByClauseBuilder().asc("loginDate").build()).
+                build());
+        assertEquals(1, issueSYNCOPE1416.getSize());
+        assertEquals("rossini", issueSYNCOPE1416.getResult().get(0).getUsername());
+
+        // search by attribute with unique constraint
+        issueSYNCOPE1416 = userService.search(new AnyQuery.Builder().
+                realm(SyncopeConstants.ROOT_REALM).
+                fiql(SyncopeClient.getUserSearchConditionBuilder().isNotNull("fullname").query()).
+                orderBy(SyncopeClient.getOrderByClauseBuilder().asc("loginDate").build()).
+                build());
+        // some identities could have been imported by pull tasks executions
+        assertTrue(issueSYNCOPE1416.getSize() >= 5);
+
+        issueSYNCOPE1416 = userService.search(new AnyQuery.Builder().
+                realm(SyncopeConstants.ROOT_REALM).
+                fiql(SyncopeClient.getUserSearchConditionBuilder().isNull("fullname").query()).
+                orderBy(SyncopeClient.getOrderByClauseBuilder().asc("loginDate").build()).
+                build());
+        assertEquals(0, issueSYNCOPE1416.getSize());
+    }
+
+    @Test
+    public void issueSYNCOPE1417() {
+        try {
+            userService.search(new AnyQuery.Builder().realm(SyncopeConstants.ROOT_REALM).
+                    fiql(SyncopeClient.getUserSearchConditionBuilder().is("userId").equalTo("*@apache.org").query()).
+                    orderBy(SyncopeClient.getOrderByClauseBuilder().asc("surname").desc("firstname").build()).build());
+            if (!ElasticsearchDetector.isElasticSearchEnabled(syncopeService)) {
+                fail();
+            }
+        } catch (SyncopeClientException e) {
+            assertEquals(ClientExceptionType.InvalidSearchExpression, e.getType());
+        }
+    }
+
+    @Test
+    public void issueSYNCOPE1419() {
+        PagedResult<UserTO> total = userService.search(
+                new AnyQuery.Builder().realm(SyncopeConstants.ROOT_REALM).page(1).size(1).build());
+
+        PagedResult<UserTO> matching = userService.search(
+                new AnyQuery.Builder().realm(SyncopeConstants.ROOT_REALM).
+                        fiql(SyncopeClient.getUserSearchConditionBuilder().
+                                is("loginDate").equalTo("2009-05-26").query()).page(1).size(1).build());
+        assertTrue(matching.getSize() > 0);
+
+        PagedResult<UserTO> unmatching = userService.search(
+                new AnyQuery.Builder().realm(SyncopeConstants.ROOT_REALM).
+                        fiql(SyncopeClient.getUserSearchConditionBuilder().
+                                is("loginDate").notEqualTo("2009-05-26").query()).page(1).size(1).build());
+        assertTrue(unmatching.getSize() > 0);
+
+        assertEquals(total.getTotalCount(), matching.getTotalCount() + unmatching.getTotalCount());
     }
 }

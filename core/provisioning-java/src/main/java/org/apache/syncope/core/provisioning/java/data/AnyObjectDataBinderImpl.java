@@ -96,7 +96,7 @@ public class AnyObjectDataBinderImpl extends AbstractAnyDataBinder implements An
 
         if (details) {
             // dynamic realms
-            anyObjectTO.getDynRealms().addAll(userDAO.findDynRealms(anyObject.getKey()));
+            anyObjectTO.getDynRealms().addAll(anyObjectDAO.findDynRealms(anyObject.getKey()));
 
             // relationships
             anyObjectTO.getRelationships().addAll(
@@ -344,6 +344,8 @@ public class AnyObjectDataBinderImpl extends AbstractAnyDataBinder implements An
                 anyObject.getPlainAttrs(membership).forEach(attr -> {
                     anyObject.remove(attr);
                     attr.setOwner(null);
+                    attr.setMembership(null);
+                    plainAttrValueDAO.deleteAll(attr, anyUtils);
                 });
 
                 if (membPatch.getOperation() == PatchOperation.DELETE) {

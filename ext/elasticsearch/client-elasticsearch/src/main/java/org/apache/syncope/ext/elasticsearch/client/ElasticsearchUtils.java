@@ -24,6 +24,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import org.apache.syncope.common.lib.types.AnyTypeKind;
 import org.apache.syncope.core.persistence.api.dao.AnyObjectDAO;
 import org.apache.syncope.core.persistence.api.dao.GroupDAO;
 import org.apache.syncope.core.persistence.api.dao.UserDAO;
@@ -33,6 +34,7 @@ import org.apache.syncope.core.persistence.api.entity.PlainAttr;
 import org.apache.syncope.core.persistence.api.entity.anyobject.AnyObject;
 import org.apache.syncope.core.persistence.api.entity.group.Group;
 import org.apache.syncope.core.persistence.api.entity.user.User;
+import org.apache.syncope.core.spring.security.AuthContextUtils;
 import org.elasticsearch.common.xcontent.XContentBuilder;
 import org.elasticsearch.common.xcontent.XContentFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -56,6 +58,10 @@ public class ElasticsearchUtils {
 
     private int retryOnConflict = 5;
 
+    private int numberOfShards = 1;
+
+    private int numberOfReplicas = 1;
+
     public void setIndexMaxResultWindow(final int indexMaxResultWindow) {
         this.indexMaxResultWindow = indexMaxResultWindow;
     }
@@ -70,6 +76,22 @@ public class ElasticsearchUtils {
 
     public int getRetryOnConflict() {
         return retryOnConflict;
+    }
+
+    public int getNumberOfShards() {
+        return numberOfShards;
+    }
+
+    public void setNumberOfShards(final int numberOfShards) {
+        this.numberOfShards = numberOfShards;
+    }
+
+    public int getNumberOfReplicas() {
+        return numberOfReplicas;
+    }
+
+    public void setNumberOfReplicas(final int numberOfReplicas) {
+        this.numberOfReplicas = numberOfReplicas;
     }
 
     /**
@@ -140,7 +162,13 @@ public class ElasticsearchUtils {
             User user = ((User) any);
             builder = builder.
                     field("username", user.getUsername()).
-                    field("lastLoginDate", user.getLastLoginDate());
+                    field("token", user.getToken()).
+                    field("tokenExpireTime", user.getTokenExpireTime()).
+                    field("changePwdDate", user.getChangePwdDate()).
+                    field("failedLogins", user.getFailedLogins()).
+                    field("lastLoginDate", user.getLastLoginDate()).
+                    field("suspended", user.isSuspended()).
+                    field("mustChangePassword", user.isMustChangePassword());
 
             List<Object> roles = userDAO.findAllRoles(user).stream().
                     map(r -> r.getKey()).collect(Collectors.toList());
@@ -174,12 +202,14 @@ public class ElasticsearchUtils {
                     values.add(plainAttr.getUniqueValue().getValue());
                 }
 
-                builder = builder.field(plainAttr.getSchema().getKey(), values);
+                builder = builder.field(plainAttr.getSchema().getKey(), values.size() == 1 ? values.get(0) : values);
             }
         }
 
-        builder = builder.endObject();
+        return builder.endObject();
+    }
 
-        return builder;
+    public String getContextDomainName(final AnyTypeKind kind) {
+        return AuthContextUtils.getDomain().toLowerCase() + "_" + kind.name().toLowerCase();
     }
 }

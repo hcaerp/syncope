@@ -73,6 +73,12 @@ public abstract class AbstractMultiPanel<INNER> extends AbstractFieldPanel<List<
         }
     }
 
+    // SYNCOPE-1476
+    public AbstractMultiPanel<INNER> setFormAsMultipart(final boolean multipart) {
+        form.setMultiPart(multipart);
+        return this;
+    }
+
     private Fragment getNoDataFragment(final IModel<List<INNER>> model, final String label) {
         final Fragment fragment = new Fragment("content", "noDataFragment", AbstractMultiPanel.this);
         fragment.add(new Label("field-label", new ResourceModel(label, label)));
@@ -188,7 +194,7 @@ public abstract class AbstractMultiPanel<INNER> extends AbstractFieldPanel<List<
         }
     }
 
-    protected abstract Panel getItemPanel(final ListItem<INNER> item);
+    protected abstract Panel getItemPanel(ListItem<INNER> item);
 
     protected void clearInput(final Panel panel) {
         // do nothing by default

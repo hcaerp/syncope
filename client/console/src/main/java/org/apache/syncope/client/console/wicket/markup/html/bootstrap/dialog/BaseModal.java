@@ -127,6 +127,11 @@ public class BaseModal<T extends Serializable> extends Modal<T> {
         return this;
     }
 
+    public BaseModal<T> setFormAsMultipart(final boolean multipart) {
+        form.setMultiPart(multipart);
+        return this;
+    }
+
     public T getFormModel() {
         return form.getModelObject();
     }

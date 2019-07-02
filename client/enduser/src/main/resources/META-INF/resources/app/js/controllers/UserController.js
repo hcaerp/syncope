@@ -25,8 +25,8 @@ angular.module("self").controller("UserController", ['$scope', '$rootScope', '$l
   'UserSelfService', 'SchemaService', 'RealmService', 'ResourceService', 'SecurityQuestionService',
   'GroupService', 'AnyService', 'UserUtil', 'GenericUtil', 'ValidationExecutor', '$translate', '$filter',
   function ($scope, $rootScope, $location, $state, UserSelfService, SchemaService, RealmService,
-          ResourceService, SecurityQuestionService, GroupService, AnyService, UserUtil, GenericUtil, ValidationExecutor,
-          $translate, $filter) {
+          ResourceService, SecurityQuestionService, GroupService, AnyService, UserUtil, GenericUtil, 
+          ValidationExecutor, $translate, $filter) {
 
     $scope.user = {};
     $scope.confirmPassword = {
@@ -37,6 +37,9 @@ angular.module("self").controller("UserController", ['$scope', '$rootScope', '$l
 
     $scope.availableRealms = [];
     $scope.availableSecurityQuestions = [];
+    $scope.bpmnProcesses = [];
+    $scope.userRequests = [];
+    $scope.userRequestsForms = [];
 
     $scope.initialSecurityQuestion = '';
     $scope.captchaInput = {

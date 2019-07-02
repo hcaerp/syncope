@@ -58,7 +58,7 @@ public class ConnIdStartStopListener implements ServletContextListener {
 
             URL url = null;
             try {
-                url = ctx.getResource("/WEB-INF/lib/"
+                url = ctx.getResource("/WEB-INF/bundles/"
                         + WebApplicationContextUtils.getWebApplicationContext(ctx).getBean(bundleFile, String.class));
             } catch (MalformedURLException e) {
                 // ignore
@@ -78,7 +78,7 @@ public class ConnIdStartStopListener implements ServletContextListener {
         ConnectorServer server = ConnectorServer.newInstance();
         WebApplicationContext ctx = WebApplicationContextUtils.getWebApplicationContext(sce.getServletContext());
         try {
-            server.setPort(Integer.parseInt(ctx.getBean("testconnectorserver.port", String.class)));
+            server.setPort(ctx.getBean("testconnectorserver.port", Integer.class));
 
             server.setBundleURLs(getBundleURLs(sce.getServletContext()));
 
@@ -86,7 +86,7 @@ public class ConnIdStartStopListener implements ServletContextListener {
                     ctx.getBean("testconnectorserver.key", String.class).toCharArray()));
 
             server.start();
-            LOG.info("ConnId connector server listening on port " + server.getPort());
+            LOG.info("ConnId connector server listening on port {}", server.getPort());
         } catch (Exception e) {
             LOG.error("Could not start ConnId connector server", e);
         }

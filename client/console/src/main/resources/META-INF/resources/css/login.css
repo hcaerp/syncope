@@ -71,7 +71,6 @@ body, html {
   min-height: 1em;
 }
 
-.form-signin #inputPassword,
 .form-signin #inputPassword {
   direction: ltr;
   height: 44px;

@@ -18,14 +18,14 @@
  */
 package org.apache.syncope.common.lib.to;
 
-import java.io.Serializable;
 import java.util.Date;
 import javax.xml.bind.annotation.XmlRootElement;
 import javax.xml.bind.annotation.XmlType;
+import org.apache.syncope.common.lib.BaseBean;
 
 @XmlRootElement(name = "userRequest")
 @XmlType
-public class UserRequest implements Serializable {
+public class UserRequest extends BaseBean {
 
     private static final long serialVersionUID = -8430826310789942133L;
 
@@ -38,6 +38,10 @@ public class UserRequest implements Serializable {
     private String executionId;
 
     private String activityId;
+    
+    private String taskId;
+
+    private boolean hasForm;
 
     public String getBpmnProcess() {
         return bpmnProcess;
@@ -77,5 +81,21 @@ public class UserRequest implements Serializable {
 
     public void setActivityId(final String activityId) {
         this.activityId = activityId;
+    }
+    
+    public String getTaskId() {
+        return taskId;
+    }
+
+    public void setTaskId(final String taskId) {
+        this.taskId = taskId;
+    }
+
+    public boolean getHasForm() {
+        return hasForm;
+    }
+
+    public void setHasForm(final boolean hasForm) {
+        this.hasForm = hasForm;
     }
 }

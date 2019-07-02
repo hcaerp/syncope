@@ -68,6 +68,7 @@ public abstract class ActionLink<T extends Serializable> implements Serializable
         REQUEST_PASSWORD_RESET("update"),
         DRYRUN("execute"),
         CLAIM("claim"),
+        UNCLAIM("unclaim"),
         SELECT("read"),
         CLOSE("read"),
         EXPORT("read"),
@@ -119,7 +120,7 @@ public abstract class ActionLink<T extends Serializable> implements Serializable
         return modelObject;
     }
 
-    public abstract void onClick(final AjaxRequestTarget target, final T modelObject);
+    public abstract void onClick(AjaxRequestTarget target, T modelObject);
 
     public void postClick() {
     }

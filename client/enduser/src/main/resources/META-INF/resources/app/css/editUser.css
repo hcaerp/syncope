@@ -62,7 +62,7 @@ under the License.
   padding: 2%;
 }
 
-#attribute {
+#attribute, #form-submit {
   margin: auto;
   max-width:480px;
   padding: 10px;
@@ -179,7 +179,7 @@ span.k-datetimepicker{
   width: 170%;
 }
 
-#date{
+#date, #date-property{
   position: relative;
   display: table; 
   border-collapse: separate;
@@ -309,6 +309,14 @@ div[role="tablist"] {
   margin-bottom: 2px;
 }
 
+.schema-type #date-property {
+    margin-bottom: 2px;
+}
+
+.property-label{
+  margin-top: 15px
+}
+
 .multivalue input{
   width: calc(100% - 70px);
   margin-top: 10px
@@ -371,6 +379,12 @@ div[role="tablist"] {
   background-color: #f5f5f5;
   border-color: #ddd;
 }
+
+.search-box {
+  padding-bottom: 5px !important;
+  margin: 3%
+}
+
 /* end default style
 ============================================================================= */
 
@@ -636,7 +650,7 @@ div[role="tablist"] {
     width:100px;
   }
 
-  #date{
+  #date, #date-property{
     position: relative;
     display: table; 
     border-collapse: separate;
@@ -686,7 +700,7 @@ div[role="tablist"] {
     margin-top: 0px
   }
 
-  #date{
+  #date, #date-property{
     position: relative;
     display: table; 
     border-collapse: separate;

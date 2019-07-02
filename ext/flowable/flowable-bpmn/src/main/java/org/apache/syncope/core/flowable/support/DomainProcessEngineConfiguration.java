@@ -18,15 +18,14 @@
  */
 package org.apache.syncope.core.flowable.support;
 
-import java.io.InputStream;
 import org.flowable.spring.SpringProcessEngineConfiguration;
 
 public class DomainProcessEngineConfiguration extends SpringProcessEngineConfiguration {
 
-    private static final String SYNCOPE_MYBATIS_MAPPING_FILE = "org/apache/syncope/ext/flowable/mappings.xml";
+    public DomainProcessEngineConfiguration() {
+        super();
 
-    @Override
-    public InputStream getMyBatisXmlConfigurationStream() {
-        return getResourceAsStream(SYNCOPE_MYBATIS_MAPPING_FILE);
+        // workaround for Flowable not supporting (yet?) MariaDB
+        databaseTypeMappings.setProperty("MariaDB", DATABASE_TYPE_MYSQL);
     }
 }

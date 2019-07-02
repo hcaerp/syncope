@@ -127,6 +127,10 @@ public final class Constants {
 
     public static final String PREF_RESOURCES_PAGINATOR_ROWS = "resources.paginator.rows";
 
+    public static final String PREF_RECONCILIATION_PAGINATOR_ROWS = "reconciliation.paginator.rows";
+
+    public static final String PREF_RESOURCE_STATUS_PAGINATOR_ROWS = "resource.status.paginator.rows";
+
     public static final String PREF_CONNECTORS_PAGINATOR_ROWS = "connectors.paginator.rows";
 
     public static final String PREF_NOTIFICATION_PAGINATOR_ROWS = "notification.paginator.rows";
@@ -212,7 +216,8 @@ public final class Constants {
             body.append("<li>").append(jexlExample).append("</li>");
         }
         body.append("</ul>").
-                append("<a href='https://commons.apache.org/proper/commons-jexl/reference/' target='_blank'>").
+                append("<a href='https://commons.apache.org/proper/commons-jexl/reference/' ").
+                append("target='_blank' rel='noopener noreferrer'>").
                 append(caller.getString("jexl_syntax_url")).
                 append("</a>");
 
